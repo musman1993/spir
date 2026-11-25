@@ -1,0 +1,23 @@
+{
+  "name": "SPIR",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-24-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "forwardPorts": [5173, 8787],
+  "portsAttributes": {
+    "5173": { "label": "SPIR web", "onAutoForward": "openBrowser" },
+    "8787": { "label": "SPIR API", "visibility": "public" }
+  },
+  "postCreateCommand": "npm install && npm install -g neon@latest && ([ -f .env ] || cp .env.example .env)",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "mechatroner.rainbow-csv",
+        "42Crunch.vscode-openapi"
+      ]
+    }
+  }
+}

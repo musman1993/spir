@@ -1,0 +1,49 @@
+name: Deploy web app to GitHub Pages
+
+# Needs (Settings > Pages): Source = "GitHub Actions".
+# Needs (Settings > Secrets and variables > Actions > Variables): SPIR_API_URL = the Neon Function URL
+# (e.g. https://br-proud-night-bdzfeuyu-spirapi.compute.c-8.us-east-2.aws.neon.tech). It is public by nature:
+# it's the address the browser calls. No secret ever goes into the web build.
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', 'package-lock.json', '.github/workflows/deploy-web.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build -w web
+        env:
+          VITE_API_BASE_URL: ${{ vars.SPIR_API_URL }}
+          BASE_PATH: /${{ github.event.repository.name }}/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: web/dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

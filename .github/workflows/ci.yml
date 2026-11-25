@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Typecheck API and web
+        run: npm run typecheck
+      - name: API tests (in-process Postgres, real seed CSV, OCR golden corpus)
+        run: npm run test -w api
+      - name: Build web app
+        run: npm run build -w web

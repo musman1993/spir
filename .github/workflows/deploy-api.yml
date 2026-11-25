@@ -1,0 +1,49 @@
+name: Deploy API to Neon Functions
+
+# Needs, in Settings > Secrets and variables > Actions:
+#   secret   NEON_API_KEY     (created for you by the Neon GitHub integration, or a key from Neon console)
+#   secret   QR_TOKEN_KEY     (the SAME value as in your Codespace .env, or seeded QR labels stop re-printing)
+#   variable NEON_PROJECT_ID  = morning-lake-11627920
+#   variable SPIR_WEB_ORIGIN  = https://musman1993.github.io   (allowed browser origin for CORS)
+#   variable SPIR_WEB_URL     = https://musman1993.github.io/spir  (printed into QR labels)
+on:
+  push:
+    branches: [main]
+    paths: ['api/**', 'neon.ts', 'package-lock.json', '.github/workflows/deploy-api.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: neon-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Run tests before deploying
+        run: npm run test -w api
+      - name: Install Neon CLI
+        run: npm install -g neon@latest
+      - name: Deploy bucket + function (neon.ts) to the production branch
+        run: |
+          touch .env   # neon deploy pulls branch variables (DATABASE_URL ...) into it for the migration step
+          neon deploy --project-id ${{ vars.NEON_PROJECT_ID }} --branch production --update-existing --allow-protected
+        env:
+          QR_TOKEN_KEY: ${{ secrets.QR_TOKEN_KEY }}
+          ALLOWED_ORIGINS: ${{ vars.SPIR_WEB_ORIGIN }}
+          PUBLIC_APP_URL: ${{ vars.SPIR_WEB_URL }}
+      - name: Apply database migrations (forward-only, idempotent)
+        run: npm run db:migrate
+      - name: Show the API URL
+        run: |
+          echo "### SPIR API deployed" >> "$GITHUB_STEP_SUMMARY"
+          neon functions list --project-id ${{ vars.NEON_PROJECT_ID }} --branch production -o json \
+            | jq -r '.[] | "- " + .slug + ": " + .invocation_url' >> "$GITHUB_STEP_SUMMARY"

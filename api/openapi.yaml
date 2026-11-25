@@ -1,0 +1,175 @@
+openapi: 3.1.0
+info:
+  title: SPIR internal API
+  version: 0.1.0
+  description: |
+    Company application interface for the Supplier Product Information Registry (spec section 11).
+    This is NOT an X12 endpoint. Supplier EDI (832/841) arrives through a separate adapter (planned).
+
+    Authentication (PoC): send `X-SPIR-User: <demo user id>`. Replace with a bearer token from the
+    company identity provider in production; authorization rules stay the same.
+    Errors always look like `{ "error": { "code", "message", "details?", "correlationId" } }`.
+servers:
+  - url: http://localhost:8787
+  - url: https://{branch}-spirapi.compute.c-8.us-east-2.aws.neon.tech
+    variables: { branch: { default: br-proud-night-bdzfeuyu } }
+security: [{ demoUser: [] }]
+components:
+  securitySchemes:
+    demoUser: { type: apiKey, in: header, name: X-SPIR-User }
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, examples: [UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, QR_REVOKED, VALIDATION_FAILED, PRODUCT_NOT_APPROVED, RATE_LIMITED] }
+            message: { type: string }
+            details: {}
+            correlationId: { type: string }
+    VersionStatus: { type: string, enum: [DRAFT, PENDING, APPROVED, REJECTED, SUPERSEDED, WITHDRAWN] }
+    FieldResult: { type: string, enum: [MATCH, MISMATCH, LOW_CONFIDENCE, UNREADABLE, MISSING_ON_LABEL, MISSING_IN_REGISTRY, NOT_APPLICABLE, NOT_CHECKED, REVIEW_REQUIRED] }
+    OverallStatus: { type: string, enum: [PASS, FAIL, PASS_WITH_WARNINGS, NEEDS_REVIEW, UNRESOLVED, PENDING_SYNCHRONIZATION] }
+    TraceabilityVersion:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        versionNo: { type: integer }
+        status: { $ref: '#/components/schemas/VersionStatus' }
+        attributes: { type: object, additionalProperties: { type: string } }
+        heats: { type: array, items: { type: string } }
+        batches: { type: array, items: { type: string } }
+        serials: { type: array, items: { type: string } }
+        reviewedBy: { type: [string, 'null'] }
+        reviewedAt: { type: [string, 'null'], format: date-time }
+        reviewComment: { type: [string, 'null'] }
+    Document:
+      type: object
+      properties:
+        code: { type: string, examples: [DOC-000001] }
+        type: { type: string, enum: [MTC, COC, INSPECTION_REPORT, DRAWING, OTHER] }
+        revision: { type: string }
+        fileName: { type: string }
+        sizeBytes: { type: integer }
+        sha256: { type: string }
+        versionNo: { type: integer }
+        versionStatus: { $ref: '#/components/schemas/VersionStatus' }
+    TraceabilityDetail:
+      type: object
+      properties:
+        code: { type: string, examples: [TRC-0000001] }
+        externalRef: { type: [string, 'null'] }
+        product: { type: object }
+        supplier: { type: object }
+        approved: { oneOf: [{ $ref: '#/components/schemas/TraceabilityVersion' }, { type: 'null' }] }
+        versions: { type: array, items: { $ref: '#/components/schemas/TraceabilityVersion' } }
+        documents: { type: array, items: { $ref: '#/components/schemas/Document' } }
+        qr: { type: [object, 'null'], properties: { hint: { type: string }, createdAt: { type: string } } }
+    MatrixField:
+      type: object
+      properties:
+        attributeKey: { type: string }
+        label: { type: string }
+        critical: { type: boolean }
+        approvedValue: { type: [string, 'null'] }
+        observedRaw: { type: [string, 'null'], description: Immutable raw OCR/barcode read }
+        observedNormalized: { type: [string, 'null'] }
+        confidence: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        result: { $ref: '#/components/schemas/FieldResult' }
+        effectiveResult: { $ref: '#/components/schemas/FieldResult' }
+        rule: { type: object }
+        note: { type: string }
+        review: { type: [object, 'null'] }
+    ValidationRun:
+      type: object
+      properties:
+        code: { type: string, examples: [VAL-000001] }
+        overallStatus: { $ref: '#/components/schemas/OverallStatus' }
+        record: { type: [object, 'null'], description: Pinned approved product + traceability versions }
+        resolution: { type: object, properties: { method: { type: string, enum: [QR_TOKEN, IDENTIFIERS, MANUAL_SELECTION, NONE] }, status: { type: string }, candidates: { type: array } } }
+        labelProfile: { type: object }
+        ruleVersion: { type: string }
+        image: { type: [object, 'null'] }
+        fields: { type: array, items: { $ref: '#/components/schemas/MatrixField' } }
+        discrepancies: { type: array }
+  responses:
+    Err: { description: Error, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+paths:
+  /api/v1/health: { get: { summary: Liveness and dependency check, security: [], responses: { '200': { description: OK } } } }
+  /api/v1/demo-users: { get: { summary: Demo role switcher users (demo auth mode only), security: [], responses: { '200': { description: OK } } } }
+  /api/v1/me: { get: { summary: Current principal, responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/Err' } } } }
+  /api/v1/dashboard: { get: { summary: Counts for the overview page, responses: { '200': { description: OK } } } }
+  /api/v1/suppliers: { get: { summary: Suppliers visible to the caller, responses: { '200': { description: OK } } } }
+  /api/v1/attribute-definitions: { get: { summary: Latest active governed attribute definitions, responses: { '200': { description: OK } } } }
+  /api/v1/label-profiles: { get: { summary: Active label profiles, responses: { '200': { description: OK } } } }
+  /api/v1/products:
+    get: { summary: List products (suppliers see own; QR users see approved only), parameters: [{ name: q, in: query, schema: { type: string } }], responses: { '200': { description: OK } } }
+    post:
+      summary: Supplier registers a product (creates Product ID + DRAFT v1)
+      requestBody: { content: { application/json: { schema: { type: object, required: [categoryCode, productName, supplierPartNumber], properties: { categoryCode: { type: string }, productName: { type: string }, description: { type: string }, supplierPartNumber: { type: string }, manufacturerPartNumber: { type: string }, attributes: { type: object } } } } } }
+      responses: { '201': { description: Created }, '409': { $ref: '#/components/responses/Err' }, '422': { $ref: '#/components/responses/Err' } }
+  /api/v1/products/{code}:
+    get: { summary: Product detail with versions and records, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK }, '404': { $ref: '#/components/responses/Err' } } }
+  /api/v1/products/{code}/draft:
+    put: { summary: Create/update the open draft (never touches the approved version), parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK }, '409': { $ref: '#/components/responses/Err' } } }
+  /api/v1/products/{code}/submit:
+    post: { summary: Submit the draft for company review, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK }, '422': { $ref: '#/components/responses/Err' } } }
+  /api/v1/traceability:
+    get: { summary: List traceability records, parameters: [{ name: q, in: query, schema: { type: string } }], responses: { '200': { description: OK } } }
+    post:
+      summary: Supplier creates a traceability record (DRAFT v1)
+      requestBody: { content: { application/json: { schema: { type: object, required: [productCode], properties: { productCode: { type: string }, externalRef: { type: string }, heats: { type: array, items: { type: string } }, batches: { type: array, items: { type: string } }, serials: { type: array, items: { type: string } }, attributes: { type: object } } } } } }
+      responses: { '201': { description: Created } }
+  /api/v1/traceability/{code}:
+    get: { summary: Record detail, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TraceabilityDetail' } } } } } }
+  /api/v1/traceability/{code}/draft: { put: { summary: Create/update the open draft, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /api/v1/traceability/{code}/submit: { post: { summary: Submit draft for review, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /api/v1/traceability/{code}/documents:
+    post:
+      summary: Upload evidence to the open DRAFT (multipart)
+      parameters: [{ name: code, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary }, docType: { type: string }, revision: { type: string } } } } } }
+      responses: { '201': { description: Created }, '413': { $ref: '#/components/responses/Err' }, '415': { $ref: '#/components/responses/Err' } }
+  /api/v1/documents/{code}/download: { get: { summary: Short-lived signed download URL (5 min), parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: '{ url, expiresIn }' } } } }
+  /api/v1/review-queue: { get: { summary: Pending versions with diffs, responses: { '200': { description: OK } } } }
+  /api/v1/review/{kind}/{versionId}/{decision}:
+    post:
+      summary: Approve or reject a pending version (company reviewer). Approving a record activates its QR.
+      parameters:
+        - { name: kind, in: path, required: true, schema: { type: string, enum: [product, traceability] } }
+        - { name: versionId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: decision, in: path, required: true, schema: { type: string, enum: [approve, reject] } }
+      requestBody: { content: { application/json: { schema: { type: object, properties: { comment: { type: string, description: Required for reject } } } } } }
+      responses: { '200': { description: OK }, '409': { $ref: '#/components/responses/Err' } }
+  /api/v1/qr/{token}:
+    get:
+      summary: Resolve a QR token to the latest APPROVED record (company users only)
+      parameters: [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TraceabilityDetail' } } } }
+        '401': { $ref: '#/components/responses/Err' }
+        '403': { $ref: '#/components/responses/Err' }
+        '404': { $ref: '#/components/responses/Err' }
+        '410': { $ref: '#/components/responses/Err' }
+        '429': { $ref: '#/components/responses/Err' }
+  /api/v1/traceability/{code}/qr: { get: { summary: Reveal active token for authorised label printing, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /api/v1/traceability/{code}/qr/rotate: { post: { summary: Replace token (old one stops resolving), parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /api/v1/traceability/{code}/qr/revoke: { post: { summary: Revoke token, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /api/v1/validations:
+    get: { summary: Label check history, responses: { '200': { description: OK } } }
+    post:
+      summary: Create a label validation run from OCR output (+ optional image)
+      requestBody:
+        content:
+          multipart/form-data: { schema: { type: object, properties: { image: { type: string, format: binary }, payload: { type: string, description: JSON with labelProfileKey, traceabilityCode?, ocr{text,confidence,lines[]}, barcodes[], device } } } }
+          application/json: { schema: { type: object } }
+      responses: { '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ValidationRun' } } } } }
+  /api/v1/validations/{code}: { get: { summary: Validation run with matrix, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /api/v1/validations/{code}/resolve: { post: { summary: Operator selects the record when ambiguous, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /api/v1/validations/{code}/fields/{key}/review: { post: { summary: 'Human review of one field: ACCEPT | CORRECT | UNREADABLE | NOT_APPLICABLE', parameters: [{ name: code, in: path, required: true, schema: { type: string } }, { name: key, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /api/v1/validations/{code}/discrepancies: { post: { summary: Raise a discrepancy (never edits registry data), parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '201': { description: Created } } } }
+  /api/v1/validations/{code}/finalize: { post: { summary: Lock the run as evidence, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK } } } }
+  /api/v1/discrepancies: { get: { summary: List discrepancies, responses: { '200': { description: OK } } } }
+  /api/v1/audit: { get: { summary: Append-only audit trail, parameters: [{ name: code, in: query, schema: { type: string } }, { name: entityType, in: query, schema: { type: string } }], responses: { '200': { description: OK } } } }
