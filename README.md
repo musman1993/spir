@@ -12,15 +12,24 @@ built from *SPIR Architecture & Requirements Specification v1.1*. This PoC uses 
 A product is one company part number from one supplier. Each **shipment** against a PO line is a separate
 record with its own versions, certificates and QR label.
 
-What it does, in one line per role:
+## How it works right now (open mode)
 
-| Who | What they do in SPIR |
-|---|---|
-| Supplier contributor | Registers products and shipment records (PO line, quantity, heats, pattern, RT), uploads MTC/CoC/RT reports, submits for approval |
-| Company reviewer | Sees a diff of every submission, approves or rejects with a reason. Approval publishes it and activates its QR label |
-| QR user | Scans a QR label, signs in, and sees **only the latest approved** record and its certificates |
-| Label inspector | Photographs an existing supplier sticker. OCR reads it, and SPIR shows a field-by-field validation matrix against the approved record |
-| Registry admin / auditor | Manages QR labels and configuration, and reads the append-only audit trail |
+There is **no sign-in and there are no roles** for now. Everyone is a generic "operator". The supplier portal
+and approval workflow are still in the code, switched off, ready to become the supplier module later.
+
+1. **Import CSV:** one row per shipment (part number, PO + line, quantity, heats, pattern number, supplier...).
+   SPIR creates a shipment record and **a QR code for each new row**.
+2. **QR labels:** print them as a sheet, download PNGs for a label printer, or export the links as CSV.
+3. **Scan a QR code** with a phone camera, webcam or handheld scanner to see the shipment's details and certificates.
+
+**Updating:** change the CSV and import it again. A changed row adds a new version to the same record, and **its
+printed QR code keeps working and shows the new data**. Identical rows are skipped. If any row is missing a mandatory
+field, nothing is imported and every problem is listed by row. A shipment is identified by supplier + part number +
+PO + line.
+
+> **Open mode means no access control.** Anyone who can reach the app can read and change the data. Keep real data on
+> a private address. A Codespace with **private** ports is ideal, because GitHub asks for your login. Don't publish real
+> data to a public GitHub Pages URL in this mode. To bring back the role switcher, set `AUTH_MODE=demo`.
 
 ## How it is put together
 
@@ -43,14 +52,16 @@ Neon Function "spirapi"  (Node 24, Hono, one modular monolith)
 
 ## Run it in your Codespace
 
-### Option A: quickest demo, no Neon needed (data resets on restart)
+### Option A: quickest, no Neon needed (data resets on restart)
 
 ```bash
 npm install
-npm run dev:memory
+npm run dev:empty     # empty registry: import your own CSV
+# or
+npm run dev:memory    # with the demo data (+ your private seed/local/*.csv)
 ```
 
-Open the **Ports** tab and click the globe icon next to port **5173**. Pick a person on the sign-in screen.
+Open the **Ports** tab and click the globe icon next to port **5173**. Go to **Import CSV**.
 
 ### Option B: against your Neon database
 
@@ -119,7 +130,7 @@ After editing: `npm run db:reset`.
 | `supplier-label-dac-t001-angled-blurry.png` | Needs review | OCR read the heat as `DH-55%0` and lost the slash in `12/12`. Flagged, not failed |
 | `supplier-label-nhg-t001-with-rt-and-pattern.png` | Pass with warnings | Pattern and RT numbers checked; description read with low confidence |
 
-Sign in as **Priya Nair (Label inspector)** > *Check a product label* > *Upload photo* > **drag a box around the label** >
+Go to *Check a product label* > *Upload photo* > **drag a box around the label** >
 *Read the label* > *Compare with the registry*. Click a row to see where it was read; press *Review* to correct a misread.
 **Nothing on this page ever changes registry data.**
 
@@ -150,9 +161,9 @@ To add your real photos to the test suite privately, see `api/test/private-corpu
 npm test
 ```
 
-54 tests run the whole API against an in-process Postgres with the real seed CSV. They cover supplier isolation,
+61 tests run the whole API against an in-process Postgres with the real seed CSV. They cover supplier isolation,
 approval and supersede rules, QR tokens (401/403/404/410, rotation), signed downloads, the field results, the
-overall status policy, and a golden corpus of **real Tesseract + ZXing output** from the demo photos. A private corpus of real
+overall status policy, CSV import (create, update under the same QR, reject with row errors), and a golden corpus of **real Tesseract + ZXing output** from the demo photos. A private corpus of real
 label photos runs only where its git-ignored files exist.
 
 ## Security notes for this PoC

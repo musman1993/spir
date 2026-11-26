@@ -6,6 +6,7 @@
 import type { Db } from './db.js';
 
 export type Role =
+  | 'OPERATOR'
   | 'SUPPLIER_CONTRIBUTOR'
   | 'COMPANY_REVIEWER'
   | 'REGISTRY_ADMIN'
@@ -13,7 +14,7 @@ export type Role =
   | 'INSPECTOR'
   | 'AUDITOR';
 
-export const COMPANY_ROLES: Role[] = ['COMPANY_REVIEWER', 'REGISTRY_ADMIN', 'QR_USER', 'INSPECTOR', 'AUDITOR'];
+export const COMPANY_ROLES: Role[] = ['OPERATOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN', 'QR_USER', 'INSPECTOR', 'AUDITOR'];
 
 export interface Principal {
   userId: string;
@@ -40,4 +41,14 @@ export function createDemoHeaderAuth(db: Db): AuthProvider {
       return u ? { userId: u.id, displayName: u.display_name, role: u.role, supplierId: u.supplier_id } : null;
     },
   };
+}
+
+/**
+ * Open mode (AUTH_MODE=open, the default for now): no sign-in, no roles. Every request is the generic
+ * "operator", who may do everything. Anyone who can reach the API can read and change data, so only use
+ * it where the network itself is private (e.g. Codespaces with private ports) or with fictional data.
+ */
+export function createOpenAuth(): AuthProvider {
+  const operator: Principal = { userId: 'operator', displayName: 'Operator', role: 'OPERATOR', supplierId: null };
+  return { mode: 'open', async authenticate() { return operator; } };
 }

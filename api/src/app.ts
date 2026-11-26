@@ -15,6 +15,7 @@ import { workflowRoutes } from './modules/workflow.js';
 import { qrRoutes } from './modules/qr.js';
 import { validationRoutes } from './modules/validation.js';
 import { auditRoutes } from './modules/audit.js';
+import { importRoutes } from './modules/importer.js';
 
 export type AppEnv = {
   Variables: {
@@ -33,7 +34,7 @@ export function createApp(services: Services) {
     cors({
       origin: (origin) => (allowedOrigins.includes('*') ? origin || '*' : allowedOrigins.includes(origin) ? origin : null),
       allowHeaders: ['Content-Type', 'X-SPIR-User', 'X-Correlation-Id'],
-      exposeHeaders: ['X-Correlation-Id'],
+      exposeHeaders: ['X-Correlation-Id', 'Content-Disposition'],
       allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       maxAge: 600,
     }),
@@ -95,6 +96,7 @@ export function createApp(services: Services) {
   v1.route('/', qrRoutes());
   v1.route('/', validationRoutes());
   v1.route('/', auditRoutes());
+  v1.route('/', importRoutes());
   app.route('/api/v1', v1);
 
   app.notFound((c) => c.json({ error: { code: 'NOT_FOUND', message: `No route ${c.req.method} ${c.req.path}`, correlationId: c.get('cid') } }, 404));

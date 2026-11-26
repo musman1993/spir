@@ -12,6 +12,7 @@
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w api\" \"npm run dev -w web\"",
     "dev:api": "npm run dev -w api",
     "dev:memory": "concurrently -n api,web -c blue,green \"npm run dev:memory -w api\" \"npm run dev -w web\"",
+    "dev:empty": "SEED=empty concurrently -n api,web -c blue,green \"npm run dev:memory -w api\" \"npm run dev -w web\"",
     "dev:web": "npm run dev -w web",
     "db:migrate": "npm run db:migrate -w api",
     "db:seed": "npm run db:seed -w api",

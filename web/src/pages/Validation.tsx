@@ -98,7 +98,7 @@ export function ValidationRun() {
   const { busy, error: actErr, run: act } = useAction();
   if (error) return <ErrorBox error={error} />;
   if (!run) return <Loading />;
-  const canAct = ['INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'].includes(me!.role) && !run.finalizedAt;
+  const canAct = ['OPERATOR', 'INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'].includes(me!.role) && !run.finalizedAt;
   const resolve = (traceabilityCode: string) => act(async () => setRun(await api(`/validations/${code}/resolve`, { body: { traceabilityCode } })));
   const finalize = () => act(async () => setRun(await api(`/validations/${code}/finalize`, { method: 'POST' })));
   const needsAttention = run.fields.filter((f: any) => !['MATCH', 'NOT_APPLICABLE', 'NOT_CHECKED'].includes(f.effectiveResult) && !f.review);

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ROLE_LABEL, type Role } from './api';
 import { useSession } from './session';
@@ -13,6 +14,8 @@ import { LabelCheck } from './pages/LabelCheck';
 import { ValidationRun, Validations } from './pages/Validation';
 import { Audit } from './pages/Audit';
 import { Settings } from './pages/Settings';
+import { ImportCsv } from './pages/ImportCsv';
+import { QrLabels } from './pages/QrLabels';
 
 type NavItem = { to: string; label: string; roles?: Role[]; count?: number };
 
@@ -21,12 +24,34 @@ export function App() {
   const loc = useLocation();
   const isReviewer = me && ['COMPANY_REVIEWER', 'REGISTRY_ADMIN', 'AUDITOR'].includes(me.role);
   const [queue] = useApi<{ items: unknown[] }>(isReviewer ? '/review-queue' : null, [loc.pathname]);
+  const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => setMenuOpen(false), [loc.pathname]);
 
   if (loading) return <div className="page"><Loading what="Starting SPIR" /></div>;
   if (!me) return <SignIn returnTo={loc.pathname} />;
 
   const supplier = me.role === 'SUPPLIER_CONTRIBUTOR';
-  const groups: { name: string; items: NavItem[] }[] = [
+  const open = me.role === 'OPERATOR';
+  const groups: { name: string; items: NavItem[] }[] = open ? [
+    { name: 'QR codes', items: [
+      { to: '/', label: 'Overview' },
+      { to: '/import', label: 'Import CSV' },
+      { to: '/qr-labels', label: 'QR labels' },
+      { to: '/scan', label: 'Scan a QR code' },
+    ] },
+    { name: 'Registry', items: [
+      { to: '/products', label: 'Products' },
+      { to: '/records', label: 'Shipment records' },
+    ] },
+    { name: 'Inspection', items: [
+      { to: '/label-check', label: 'Check a product label' },
+      { to: '/validations', label: 'Label check history' },
+    ] },
+    { name: 'Governance', items: [
+      { to: '/audit', label: 'Audit trail' },
+      { to: '/settings', label: 'Attributes & label profiles' },
+    ] },
+  ] : [
     { name: 'Registry', items: [
       { to: '/', label: 'Overview' },
       { to: '/products', label: supplier ? 'My products' : 'Products' },
@@ -51,7 +76,8 @@ export function App() {
           <TagMark className="brand-mark" />
           <div><div className="brand-name">SPIR</div><div className="brand-sub">Supplier product information registry</div></div>
         </NavLink>
-        <nav className="nav" aria-label="Main">
+        <button className="btn small menu-toggle" aria-expanded={menuOpen} aria-controls="main-nav" onClick={() => setMenuOpen((o) => !o)}>Menu</button>
+        <nav id="main-nav" className={`nav${menuOpen ? ' open' : ''}`} aria-label="Main">
           {groups.map((g) => {
             const items = g.items.filter((i) => !i.roles || i.roles.includes(me.role));
             if (!items.length) return null;
@@ -67,16 +93,20 @@ export function App() {
             );
           })}
         </nav>
-        <div className="rail-foot">Proof of concept with fictional suppliers and synthetic data.</div>
+        <div className="rail-foot">{open ? 'Proof of concept. Open mode, no sign-in.' : 'Proof of concept with fictional suppliers and synthetic data.'}</div>
       </aside>
       <div className="main">
-        <div className="demo-banner">Demo sign-in: anyone can switch roles. Don't enter real supplier or product data.</div>
-        <header className="topbar">
-          <div className="who">
-            <span><strong>{me.displayName}</strong> <span className="who-role">{ROLE_LABEL[me.role]}{me.supplier ? `, ${me.supplier.name}` : ''}</span></span>
-            <button className="btn small" onClick={signOut}>Switch role</button>
-          </div>
-        </header>
+        {open
+          ? <div className="demo-banner">Open mode: no sign-in. Anyone who can open this app can see and change its data, so keep it on a private address.</div>
+          : <div className="demo-banner">Demo sign-in: anyone can switch roles. Don't enter real supplier or product data.</div>}
+        {!open && (
+          <header className="topbar">
+            <div className="who">
+              <span><strong>{me.displayName}</strong> <span className="who-role">{ROLE_LABEL[me.role]}{me.supplier ? `, ${me.supplier.name}` : ''}</span></span>
+              <button className="btn small" onClick={signOut}>Switch role</button>
+            </div>
+          </header>
+        )}
         <main className="page" id="main">
           <Routes>
             <Route path="/" element={<Home />} />
@@ -95,6 +125,8 @@ export function App() {
             <Route path="/validations" element={<Validations />} />
             <Route path="/validations/:code" element={<ValidationRun />} />
             <Route path="/audit" element={<Audit />} />
+            <Route path="/import" element={<ImportCsv />} />
+            <Route path="/qr-labels" element={<QrLabels />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

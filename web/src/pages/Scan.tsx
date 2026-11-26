@@ -108,10 +108,19 @@ export function QrResult() {
     <>
       <div className="spread page-head">
         <div>
-          <h1>Approved record</h1>
-          <p className="lede" style={{ marginBottom: 0 }}>Version {v.versionNo}, approved {fmtDate(v.reviewedAt)} by {v.reviewedBy}. Pending supplier changes are never shown here.</p>
+          {me!.role === 'OPERATOR' ? (
+            <>
+              <h1>Shipment record</h1>
+              <p className="lede" style={{ marginBottom: 0 }}>Version {v.versionNo}, last updated {fmtDate(v.reviewedAt)}.</p>
+            </>
+          ) : (
+            <>
+              <h1>Approved record</h1>
+              <p className="lede" style={{ marginBottom: 0 }}>Version {v.versionNo}, approved {fmtDate(v.reviewedAt)} by {v.reviewedBy}. Pending supplier changes are never shown here.</p>
+            </>
+          )}
         </div>
-        <div className="row"><Link className="btn" to="/scan">Scan another</Link>{['INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'].includes(me!.role) && <Link className="btn primary" to={`/label-check?record=${rec.code}`}>Check the sticker on this item</Link>}</div>
+        <div className="row"><Link className="btn" to="/scan">Scan another</Link>{['OPERATOR', 'INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'].includes(me!.role) && <Link className="btn primary" to={`/label-check?record=${rec.code}`}>Check the sticker on this item</Link>}</div>
       </div>
       <div className="grid-2">
         <div className="stack">

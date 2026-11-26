@@ -25,10 +25,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => { setApiUser(null); setMe(null); write(null); }, []);
 
   useEffect(() => {
+    // Open mode: the API answers /me without any sign-in (one generic operator). Demo mode: role switcher.
     const saved = read();
-    if (!saved) { setLoading(false); return; }
-    signIn(saved).catch(() => {}).finally(() => setLoading(false));
-  }, [signIn]);
+    (async () => {
+      try { setApiUser(saved); setMe(await api<Me>('/me')); }
+      catch { setApiUser(null); write(null); }
+      finally { setLoading(false); }
+    })();
+  }, []);
 
   return <Ctx.Provider value={{ me, loading, signIn, signOut }}>{children}</Ctx.Provider>;
 }

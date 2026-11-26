@@ -1,6 +1,6 @@
 // Composition root: reads environment variables and wires the providers together.
 import { parseKey } from './lib/crypto.js';
-import { createDemoHeaderAuth, type AuthProvider } from './providers/auth.js';
+import { createDemoHeaderAuth, createOpenAuth, type AuthProvider } from './providers/auth.js';
 import { createPgDatabase, type Db } from './providers/db.js';
 import { createLocalDiskStorage, createS3Storage, type FileStorage } from './providers/storage.js';
 
@@ -56,7 +56,8 @@ export async function createServicesFromEnv(env: NodeJS.ProcessEnv = process.env
   if (config.insecureDevKey) console.warn('[config] QR_TOKEN_KEY not set - using an INSECURE development key.');
   const db = await createPgDatabase(env.DATABASE_URL);
   const storage = await createStorageFromEnv(env, config.fileSigningSecret);
-  if ((env.AUTH_MODE ?? 'demo') !== 'demo') throw new Error(`AUTH_MODE=${env.AUTH_MODE} is not implemented yet; use "demo".`);
-  const auth = createDemoHeaderAuth(db);
+  const mode = env.AUTH_MODE ?? 'open';
+  if (!['open', 'demo'].includes(mode)) throw new Error(`AUTH_MODE=${mode} is not implemented yet; use "open" or "demo".`);
+  const auth = mode === 'demo' ? createDemoHeaderAuth(db) : createOpenAuth();
   return { db, storage, auth, config };
 }

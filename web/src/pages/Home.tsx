@@ -8,6 +8,7 @@ interface Stats { products: number; records: number; pending: number; drafts: nu
 export function Home() {
   const { me } = useSession();
   const [s, error] = useApi<Stats>('/dashboard');
+  if (me!.role === 'OPERATOR') return <OpenHome stats={s} error={error} />;
   const supplier = me!.role === 'SUPPLIER_CONTRIBUTOR';
   const reviewer = ['COMPANY_REVIEWER', 'REGISTRY_ADMIN', 'AUDITOR'].includes(me!.role);
   const inspector = ['INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'].includes(me!.role);
@@ -48,6 +49,43 @@ export function Home() {
           {me!.role === 'AUDITOR' && <Link className="btn" to="/audit">Read the audit trail</Link>}
         </div>
       </div>
+    </>
+  );
+}
+
+/** Open mode: the three-step workflow. */
+function OpenHome({ stats, error }: { stats: Stats | null; error: any }) {
+  return (
+    <>
+      <div className="page-head">
+        <h1>Supplier product QR codes</h1>
+        <p className="lede">Load your product and shipment data from a CSV, print a QR code for each shipment, then scan a code to see everything about that part.</p>
+      </div>
+      <ErrorBox error={error} />
+      <ol className="steps">
+        <li className="panel">
+          <h2>Import your CSV</h2>
+          <p className="small">Part number, PO and line, heat, quantity, pattern number and supplier for each shipment. Re-import any time to update.</p>
+          <Link className="btn primary" to="/import">Import CSV</Link>
+        </li>
+        <li className="panel">
+          <h2>Print the QR labels</h2>
+          <p className="small">{stats ? `${stats.records} shipment record${stats.records === 1 ? '' : 's'} so far.` : ''} Print a sheet, or download PNGs for a label printer.</p>
+          <Link className="btn" to="/qr-labels">QR labels</Link>
+        </li>
+        <li className="panel">
+          <h2>Scan a code</h2>
+          <p className="small">With a phone camera, a webcam or a handheld scanner, to open that shipment's details and certificates.</p>
+          <Link className="btn" to="/scan">Scan a QR code</Link>
+        </li>
+      </ol>
+      {stats && (
+        <div className="grid-cols" style={{ marginTop: 20 }}>
+          <Link className="stat" to="/products"><div className="stat-n">{stats.products}</div><div className="stat-l">Products</div></Link>
+          <Link className="stat" to="/records"><div className="stat-n">{stats.records}</div><div className="stat-l">Shipment records with QR codes</div></Link>
+          <Link className="stat" to="/validations"><div className="stat-n">{stats.validationRuns}</div><div className="stat-l">Label checks run</div></Link>
+        </div>
+      )}
     </>
   );
 }

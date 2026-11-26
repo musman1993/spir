@@ -35,9 +35,10 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
 export const appBaseUrl = () => window.location.href.split('#')[0].replace(/\/+$/, '').replace(/\/index\.html$/, '');
 export const qrLinkFor = (token: string) => `${appBaseUrl()}/#/t/${token}`;
 
-export type Role = 'SUPPLIER_CONTRIBUTOR' | 'COMPANY_REVIEWER' | 'REGISTRY_ADMIN' | 'QR_USER' | 'INSPECTOR' | 'AUDITOR';
+export type Role = 'OPERATOR' | 'SUPPLIER_CONTRIBUTOR' | 'COMPANY_REVIEWER' | 'REGISTRY_ADMIN' | 'QR_USER' | 'INSPECTOR' | 'AUDITOR';
 export interface Me { userId: string; displayName: string; role: Role; supplierId: string | null; supplier: { code: string; name: string } | null }
 export const ROLE_LABEL: Record<Role, string> = {
+  OPERATOR: 'Operator',
   SUPPLIER_CONTRIBUTOR: 'Supplier contributor',
   COMPANY_REVIEWER: 'Company reviewer',
   REGISTRY_ADMIN: 'Registry administrator',

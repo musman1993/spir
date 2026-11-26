@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from '../src/app.js';
 import type { Services } from '../src/config.js';
 import { readConfig } from '../src/config.js';
-import { createDemoHeaderAuth } from '../src/providers/auth.js';
+import { createDemoHeaderAuth, createOpenAuth } from '../src/providers/auth.js';
 import { createPGliteDatabase } from '../src/providers/db.js';
 import { createMemoryStorage } from '../src/providers/storage.js';
 import { runMigrations } from '../src/lib/migrate.js';
@@ -12,12 +12,12 @@ import { loadSeed } from '../src/seed/loadSeed.js';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-export async function setup(withSeed = true) {
+export async function setup(withSeed = true, authMode: 'demo' | 'open' = 'demo') {
   const db = await createPGliteDatabase();
   await runMigrations(db);
   const config = readConfig({ QR_TOKEN_KEY: Buffer.alloc(32, 7).toString('base64'), ALLOWED_ORIGINS: '*', PUBLIC_APP_URL: 'https://example.test/spir' });
   const storage = createMemoryStorage(config.fileSigningSecret);
-  const services: Services = { db, storage, auth: createDemoHeaderAuth(db), config };
+  const services: Services = { db, storage, auth: authMode === 'open' ? createOpenAuth() : createDemoHeaderAuth(db), config };
   const report = withSeed ? await loadSeed(db, storage, config.qrKey, readFileSync(path.join(ROOT, 'seed/spir_seed.csv'), 'utf8')) : null;
   const app = createApp(services);
 

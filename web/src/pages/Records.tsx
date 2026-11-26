@@ -139,7 +139,7 @@ export function RecordDetail() {
   if (error) return <ErrorBox error={error} />;
   if (!rec) return <Loading />;
   const supplier = me!.role === 'SUPPLIER_CONTRIBUTOR';
-  const canQr = ['COMPANY_REVIEWER', 'REGISTRY_ADMIN'].includes(me!.role);
+  const canQr = ['OPERATOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'].includes(me!.role);
   const latest = rec.versions[0];
   const open = rec.versions.find((v: any) => v.status === 'DRAFT' || v.status === 'PENDING');
   const shown = rec.approved ?? latest;
@@ -189,7 +189,7 @@ export function RecordDetail() {
                 </li>
               ))}
             </ol>
-            {['AUDITOR', 'REGISTRY_ADMIN', 'COMPANY_REVIEWER'].includes(me!.role) && <Link className="small" to={`/audit?code=${rec.code}`}>Full audit trail for this record</Link>}
+            {['OPERATOR', 'AUDITOR', 'REGISTRY_ADMIN', 'COMPANY_REVIEWER'].includes(me!.role) && <Link className="small" to={`/audit?code=${rec.code}`}>Full audit trail for this record</Link>}
           </section>
         </div>
       </div>

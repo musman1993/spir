@@ -10,7 +10,7 @@ export function catalogRoutes() {
   // Demo role switcher list. In a real deployment this route disappears with AUTH_MODE != demo.
   r.get('/demo-users', async (c) => {
     const { db, auth } = c.get('services');
-    if (auth.mode !== 'demo') return c.json({ users: [] });
+    if (auth.mode !== 'demo') return c.json({ users: [], mode: auth.mode });
     const users = await db.query(
       `SELECT u.id, u.display_name AS "displayName", u.role, s.supplier_code AS "supplierCode", s.legal_name AS "supplierName"
          FROM spir.app_user u LEFT JOIN spir.supplier s ON s.id = u.supplier_id
