@@ -4,19 +4,26 @@ import { ocr, setup } from './helpers.js';
 let t: Awaited<ReturnType<typeof setup>>;
 const codeOf = async (externalRef: string) =>
   (await t.db.one<{ traceability_code: string }>('SELECT traceability_code FROM spir.traceability_record WHERE external_ref = $1', [externalRef]))!.traceability_code;
-const tokenFor = async (trc: string) => (await t.call('reviewer', 'GET', `/api/v1/traceability/${trc}/qr`)).body.token as string;
+// Any record's QR token, read straight from the database (label printing is supplier-only and supplier-scoped).
+const tokenFor = async (trc: string) => {
+  const { decryptToken } = await import('../src/lib/crypto.js');
+  const row = await t.db.one<{ token_ciphertext: string }>(
+    `SELECT q.token_ciphertext FROM spir.qr_token q JOIN spir.traceability_record r ON r.id = q.traceability_id
+      WHERE r.traceability_code = $1 AND q.status = 'ACTIVE'`, [trc]);
+  return decryptToken(t.services.config.qrKey, row!.token_ciphertext);
+};
 
 beforeAll(async () => { t = await setup(); }, 60_000);
 
 describe('seed import from the flat CSV', () => {
   it('creates suppliers, products, versioned records, documents and QR tokens', () => {
-    expect(t.report).toMatchObject({ suppliers: 3, products: 6, records: 11, versions: 12, qrTokens: 8, newAttributes: [] });
+    expect(t.report).toMatchObject({ suppliers: 3, products: 6, records: 11, versions: 12, qrTokens: 11, newAttributes: [] });
     expect(t.report!.documents).toBeGreaterThan(15);
   });
-  it('a repeated traceability_ref becomes a pending version on top of the approved one', async () => {
-    const r = await t.call('reviewer', 'GET', `/api/v1/traceability/${await codeOf('FCF-T-003')}`);
-    expect(r.body.versions.map((v: any) => [v.versionNo, v.status])).toEqual([[2, 'PENDING'], [1, 'APPROVED']]);
-    expect(r.body.approved.attributes).toMatchObject({ purchase_order_number: '7700104890', po_line_number: '1', quantity: '2', pattern_number: 'PT-2417-B' });
+  it('a repeated traceability_ref becomes a new live version; the previous one is superseded', async () => {
+    const r = await t.call('company', 'GET', `/api/v1/traceability/${await codeOf('FCF-T-003')}`);
+    expect(r.body.versions.map((v: any) => [v.versionNo, v.status])).toEqual([[2, 'APPROVED'], [1, 'SUPERSEDED']]);
+    expect(r.body.approved.attributes).toMatchObject({ purchase_order_number: '7700104890', po_line_number: '1', quantity: '3', pattern_number: 'PT-2417-B' });
     expect(r.body.product).toMatchObject({ partNumber: '24B3170X012', name: 'BODY,GLOBE ~ 2,CL300,RF,WCB' });
   });
   it('retired columns are rejected with a clear message', async () => {
@@ -29,153 +36,72 @@ describe('seed import from the flat CSV', () => {
 });
 
 describe('authentication and supplier isolation', () => {
-  it('requires a user', async () => {
+  it('requires a sign-in, except for QR scans', async () => {
     expect((await t.call(null, 'GET', '/api/v1/products')).status).toBe(401);
+    expect((await t.call(null, 'GET', '/api/v1/traceability')).status).toBe(401);
   });
-  it('suppliers only see their own organisation', async () => {
-    const r = await t.call('supplier-fcf', 'GET', '/api/v1/products');
+  it('the supplier portal only sees its own supplier (the demo seed links it to Falcon Crest)', async () => {
+    const r = await t.call('supplier', 'GET', '/api/v1/products');
     expect(r.body.products.length).toBe(2);
     expect(new Set(r.body.products.map((p: any) => p.supplierName))).toEqual(new Set(['Falcon Crest Foundry LLC']));
-    const nhg = (await t.call('reviewer', 'GET', '/api/v1/products?q=32C5018X044')).body.products[0].code;
-    expect((await t.call('supplier-fcf', 'GET', `/api/v1/products/${nhg}`)).status).toBe(404);
+    const nhg = (await t.call('company', 'GET', '/api/v1/products?q=32C5018X044')).body.products[0].code;
+    expect((await t.call('supplier', 'GET', `/api/v1/products/${nhg}`)).status).toBe(404);
+    expect((await t.call('supplier', 'GET', `/api/v1/traceability/${await codeOf('NHG-T-001')}`)).status).toBe(404);
   });
-  it('QR users never see unapproved records; records are searchable by PO', async () => {
-    expect((await t.call('reviewer', 'GET', '/api/v1/traceability')).body.records.length).toBe(11);
-    expect((await t.call('qr-user', 'GET', '/api/v1/traceability')).body.records.length).toBe(8);
-    expect((await t.call('qr-user', 'GET', `/api/v1/traceability/${await codeOf('DAC-T-002')}`)).status).toBe(404);
-    const byPo = (await t.call('qr-user', 'GET', '/api/v1/traceability?q=7700104512')).body.records;
+  it('the company portal sees every supplier; records are searchable by PO', async () => {
+    expect((await t.call('company', 'GET', '/api/v1/traceability')).body.records.length).toBe(11);
+    const byPo = (await t.call('company', 'GET', '/api/v1/traceability?q=7700104512')).body.records;
     expect(byPo.map((r: any) => r.poLine).sort()).toEqual(['1', '2']);
   });
 });
 
-describe('QR resolution', () => {
-  it('returns only the latest approved version, never the pending update', async () => {
+describe('QR resolution (open to anyone)', () => {
+  it('a scan without sign-in shows the live version, without history', async () => {
     const trc = await codeOf('FCF-T-003');
-    const r = await t.call('qr-user', 'GET', `/api/v1/qr/${await tokenFor(trc)}`);
+    const r = await t.call(null, 'GET', `/api/v1/qr/${await tokenFor(trc)}`);
     expect(r.status).toBe(200);
     expect(r.body.code).toBe(trc);
-    expect(r.body.approved.attributes.quantity).toBe('2');
+    expect(r.body.approved.attributes.quantity).toBe('3');
     expect(r.body.versions).toBeUndefined();
-    expect(r.body.documents.every((d: any) => d.versionStatus === 'APPROVED')).toBe(true);
     expect(r.headers.get('cache-control')).toBe('no-store');
+    expect((await t.call(null, 'GET', `/api/v1/qr/${'x'.repeat(43)}`)).status).toBe(404);
   });
-  it('token is a locator, not a credential', async () => {
-    const tok = await tokenFor(await codeOf('FCF-T-001'));
-    expect((await t.call(null, 'GET', `/api/v1/qr/${tok}`)).status).toBe(401);
-    expect((await t.call('supplier-fcf', 'GET', `/api/v1/qr/${tok}`)).status).toBe(403);
-    expect((await t.call('qr-user', 'GET', `/api/v1/qr/${'x'.repeat(43)}`)).status).toBe(404);
-  });
-  it('revoked tokens return 410 and rotation keeps the Traceability ID', async () => {
-    const trc = await codeOf('NHG-T-002');
+  it('the supplier replaces a label: the old one stops working, the record keeps its ID', async () => {
+    const trc = await codeOf('FCF-T-002');
     const old = await tokenFor(trc);
-    expect((await t.call('reviewer', 'POST', `/api/v1/traceability/${trc}/qr/rotate`, { reason: 'Label damaged' })).status).toBe(200);
-    expect((await t.call('qr-user', 'GET', `/api/v1/qr/${old}`)).status).toBe(410);
-    const fresh = await tokenFor(trc);
+    expect((await t.call('company', 'POST', `/api/v1/traceability/${trc}/qr/rotate`, { reason: 'Label damaged' })).status).toBe(403);
+    expect((await t.call('supplier', 'POST', `/api/v1/traceability/${trc}/qr/rotate`, { reason: 'Label damaged' })).status).toBe(200);
+    expect((await t.call(null, 'GET', `/api/v1/qr/${old}`)).status).toBe(410);
+    const fresh = (await t.call('supplier', 'GET', `/api/v1/traceability/${trc}/qr`)).body.token;
     expect(fresh).not.toBe(old);
-    expect((await t.call('qr-user', 'GET', `/api/v1/qr/${fresh}`)).body.code).toBe(trc);
+    expect((await t.call(null, 'GET', `/api/v1/qr/${fresh}`)).body.code).toBe(trc);
   });
-  it('documents (incl. RT reports) download through short-lived signed links', async () => {
+  it('certificates download through short-lived signed links (signed-in or via the scanned label)', async () => {
     const trc = await codeOf('FCF-T-001');
-    const docs = (await t.call('qr-user', 'GET', `/api/v1/traceability/${trc}`)).body.documents;
+    const docs = (await t.call('company', 'GET', `/api/v1/traceability/${trc}`)).body.documents;
     expect(docs.map((d: any) => d.type).sort()).toEqual(['COC', 'MTC', 'RT_REPORT']);
-    const link = await t.call('qr-user', 'GET', `/api/v1/documents/${docs[0].code}/download`);
+    const link = await t.call('company', 'GET', `/api/v1/documents/${docs[0].code}/download`);
     expect(link.body.expiresIn).toBe(300);
     const file = await t.app.request(link.body.url);
     expect(file.status).toBe(200);
     expect((await file.text()).startsWith('%PDF-')).toBe(true);
     expect((await t.app.request(link.body.url.replace(/sig=[^&]+/, 'sig=forged'))).status).toBe(403);
+    const tok = await tokenFor(trc);
+    const pub = await t.call(null, 'GET', `/api/v1/qr/${tok}/documents/${docs[0].code}`);
+    expect(pub.status).toBe(200);
+    expect((await t.app.request(pub.body.url)).status).toBe(200);
+    // A label only opens its own record's certificates.
+    const other = (await t.call('company', 'GET', `/api/v1/traceability/${await codeOf('NHG-T-001')}`)).body.documents[0].code;
+    expect((await t.call(null, 'GET', `/api/v1/qr/${tok}/documents/${other}`)).status).toBe(404);
   });
 });
 
-describe('supplier submission -> company approval workflow', () => {
-  let productCode = '';
-  let trc = '';
-  const attrs = (qty: string) => ({ purchase_order_number: '7700109999', po_line_number: '1', quantity: qty, pattern_number: 'PT-3001', country_of_origin: 'AE' });
-  it('supplier registers a product and a traceability draft with a document', async () => {
-    const p = await t.call('supplier-fcf', 'POST', '/api/v1/products', {
-      categoryCode: 'VALVE_COMPONENT', productName: 'BODY,GLOBE ~ 3,CL600,RF,WCB', partNumber: '24B9999X001',
-      attributes: { design_revision: 'A', material: 'ASTM A216 WCB' },
-    });
-    expect(p.status).toBe(201);
-    productCode = p.body.code;
-    expect(productCode).toMatch(/^PRD-\d{7}$/);
-    const dup = await t.call('supplier-fcf', 'POST', '/api/v1/products', { categoryCode: 'VALVE_COMPONENT', productName: 'dup', partNumber: '24b9999x001', attributes: {} });
-    expect(dup.status).toBe(409);
-    expect(dup.body.error.code).toBe('DUPLICATE_PRODUCT');
-    // Another supplier may supply the same company part number.
-    expect((await t.call('supplier-nhg', 'POST', '/api/v1/products', { categoryCode: 'VALVE_COMPONENT', productName: 'second source', partNumber: '24B9999X001', attributes: {} })).status).toBe(201);
-
-    const bad = await t.call('supplier-fcf', 'POST', '/api/v1/traceability', { productCode, heats: ['HT-90001'], attributes: { ...attrs('two') } });
-    expect(bad.status).toBe(422);
-    const r = await t.call('supplier-fcf', 'POST', '/api/v1/traceability', { productCode, externalRef: 'FCF-T-100', heats: ['HT-90001'], attributes: { purchase_order_number: '7700109999' } });
-    expect(r.status).toBe(201);
-    trc = r.body.code;
-
-    const form = new FormData();
-    form.set('docType', 'RT_REPORT');
-    form.set('file', new File([new TextEncoder().encode('%PDF-1.4 demo')], 'rt.pdf', { type: 'application/pdf' }));
-    expect((await t.call('supplier-fcf', 'POST', `/api/v1/traceability/${trc}/documents`, form)).status).toBe(201);
-    const exe = new FormData();
-    exe.set('docType', 'MTC');
-    exe.set('file', new File([new Uint8Array([0x4d, 0x5a, 0x90, 0])], 'evil.pdf', { type: 'application/pdf' }));
-    expect((await t.call('supplier-fcf', 'POST', `/api/v1/traceability/${trc}/documents`, exe)).status).toBe(415);
-  });
-
-  it('submit enforces the mandatory identification fields', async () => {
-    const r = await t.call('supplier-fcf', 'POST', `/api/v1/traceability/${trc}/submit`);
-    expect(r.status).toBe(422);
-    expect(r.body.error.details.map((d: any) => d.field).sort()).toEqual(['pattern_number', 'po_line_number', 'quantity']);
-    await t.call('supplier-fcf', 'PUT', `/api/v1/traceability/${trc}/draft`, { heats: ['HT-90001'], attributes: attrs('4') });
-  });
-
-  it('other suppliers and QR users cannot see the draft', async () => {
-    expect((await t.call('supplier-nhg', 'GET', `/api/v1/traceability/${trc}`)).status).toBe(404);
-    expect((await t.call('qr-user', 'GET', `/api/v1/traceability/${trc}`)).status).toBe(404);
-  });
-
-  it('submit, reject with reason, correct, resubmit, approve', async () => {
-    expect((await t.call('supplier-fcf', 'POST', `/api/v1/products/${productCode}/submit`)).status).toBe(200);
-    expect((await t.call('supplier-fcf', 'POST', `/api/v1/traceability/${trc}/submit`)).status).toBe(200);
-    expect((await t.call('supplier-fcf', 'PUT', `/api/v1/traceability/${trc}/draft`, { heats: ['X'] })).status).toBe(409);
-
-    const queue = (await t.call('reviewer', 'GET', '/api/v1/review-queue')).body.items;
-    const tItem = queue.find((i: any) => i.code === trc);
-    const pItem = queue.find((i: any) => i.code === productCode);
-    expect(tItem.blockedReason).toMatch(/product/i);
-    expect(tItem.documents.length).toBe(1);
-
-    expect((await t.call('supplier-fcf', 'POST', `/api/v1/review/traceability/${tItem.versionId}/approve`, {})).status).toBe(403);
-    expect((await t.call('reviewer', 'POST', `/api/v1/review/traceability/${tItem.versionId}/approve`, {})).body.error.code).toBe('PRODUCT_NOT_APPROVED');
-    expect((await t.call('reviewer', 'POST', `/api/v1/review/traceability/${tItem.versionId}/reject`, {})).status).toBe(422);
-    expect((await t.call('reviewer', 'POST', `/api/v1/review/traceability/${tItem.versionId}/reject`, { comment: 'Packing list says 5 pieces' })).status).toBe(200);
-
-    const fixed = await t.call('supplier-fcf', 'PUT', `/api/v1/traceability/${trc}/draft`, { heats: ['HT-90001'], attributes: attrs('5') });
-    expect(fixed.body.versions.map((v: any) => [v.versionNo, v.status])).toEqual([[2, 'DRAFT'], [1, 'REJECTED']]);
-    await t.call('supplier-fcf', 'POST', `/api/v1/traceability/${trc}/submit`);
-
-    expect((await t.call('reviewer', 'POST', `/api/v1/review/product/${pItem.versionId}/approve`, { comment: 'ok' })).status).toBe(200);
-    const v2 = (await t.call('reviewer', 'GET', '/api/v1/review-queue')).body.items.find((i: any) => i.code === trc);
-    expect(v2.comparedTo).toEqual({ versionNo: 1, status: 'REJECTED' });
-    expect(v2.changes).toContainEqual({ field: 'quantity', from: '4', to: '5' });
-    const ok = await t.call('reviewer', 'POST', `/api/v1/review/traceability/${v2.versionId}/approve`, {});
-    expect(ok.body).toMatchObject({ status: 'APPROVED', versionNo: 2, qrIssued: true });
-    expect((await t.call('qr-user', 'GET', `/api/v1/traceability/${trc}`)).body.approved.attributes.quantity).toBe('5');
-  });
-
-  it('approving an update supersedes the previous approved version', async () => {
-    const trc3 = await codeOf('FCF-T-003');
-    const item = (await t.call('reviewer', 'GET', '/api/v1/review-queue')).body.items.find((i: any) => i.code === trc3);
-    await t.call('reviewer', 'POST', `/api/v1/review/traceability/${item.versionId}/approve`, {});
-    const d = (await t.call('reviewer', 'GET', `/api/v1/traceability/${trc3}`)).body;
-    expect(d.versions.map((v: any) => v.status)).toEqual(['APPROVED', 'SUPERSEDED']);
-    expect(d.approved.attributes.quantity).toBe('3');
-  });
-
+describe('history and audit', () => {
   it('approved history is immutable and the audit trail is append-only', async () => {
     await expect(t.db.query(`UPDATE spir.traceability_version SET attributes = '{}' WHERE status = 'APPROVED'`)).rejects.toThrow(/immutable/);
     await expect(t.db.query(`DELETE FROM spir.audit_event`)).rejects.toThrow(/append-only/);
-    const events = (await t.call('auditor', 'GET', `/api/v1/audit?code=${trc}`)).body.events.map((e: any) => e.action);
-    expect(events).toEqual(expect.arrayContaining(['CREATE', 'UPLOAD_DOCUMENT', 'SUBMIT', 'REJECT', 'APPROVE', 'QR_ISSUE']));
+    const events = (await t.call('company', 'GET', `/api/v1/audit?code=${await codeOf('NHG-T-002')}`)).body.events.map((e: any) => e.action);
+    expect(events).toEqual(expect.arrayContaining(['QR_ISSUE']));
   });
 });
 
@@ -192,7 +118,7 @@ describe('label OCR validation matrix', () => {
     'Country of Origin : UAE',
     'Visual Acceptance : OK',
   ];
-  const run = (body: any) => t.call('inspector', 'POST', '/api/v1/validations', body);
+  const run = (body: any) => t.call('company', 'POST', '/api/v1/validations', body);
   const field = (r: any, k: string) => r.body.fields.find((f: any) => f.attributeKey === k);
 
   it('a correct supplier label resolves by part number + PO and passes', async () => {
@@ -233,7 +159,7 @@ describe('label OCR validation matrix', () => {
     const r = await run({ ocr: ocr(supplierLabel.map((l) => l.replace('HT-77812', 'HT-778I2'))) });
     expect(field(r, 'heat_number')).toMatchObject({ result: 'REVIEW_REQUIRED', observedRaw: 'HT-778I2' });
     expect(r.body.overallStatus).toBe('NEEDS_REVIEW');
-    const c = await t.call('inspector', 'POST', `/api/v1/validations/${r.body.code}/fields/heat_number/review`, { action: 'CORRECT', value: 'HT-77812', note: 'Image shows a 1' });
+    const c = await t.call('company', 'POST', `/api/v1/validations/${r.body.code}/fields/heat_number/review`, { action: 'CORRECT', value: 'HT-77812', note: 'Image shows a 1' });
     expect(field(c, 'heat_number')).toMatchObject({ result: 'REVIEW_REQUIRED', effectiveResult: 'MATCH', observedRaw: 'HT-778I2' });
     expect(field(c, 'heat_number').review).toMatchObject({ disposition: 'CORRECTED', correctedValue: 'HT-77812' });
     expect(c.body.overallStatus).toBe('PASS');
@@ -246,14 +172,14 @@ describe('label OCR validation matrix', () => {
     const r = await run({ ocr: ocr(supplierLabel.map((l) => l.replace('HT-77812', 'HT-99999'))) });
     expect(field(r, 'heat_number').result).toBe('MISMATCH');
     expect(r.body.overallStatus).toBe('FAIL');
-    const d = await t.call('inspector', 'POST', `/api/v1/validations/${r.body.code}/discrepancies`, {
+    const d = await t.call('company', 'POST', `/api/v1/validations/${r.body.code}/discrepancies`, {
       attributeKey: 'heat_number', severity: 'CRITICAL', classification: 'MISLABELLED_PRODUCT', description: 'Label heat differs from MTC',
     });
     expect(d.status).toBe(201);
-    expect((await t.call('qr-user', 'GET', `/api/v1/traceability/${await codeOf('FCF-T-001')}`)).body.approved.heats).toEqual(['HT-77812']);
-    const fin = await t.call('inspector', 'POST', `/api/v1/validations/${r.body.code}/finalize`);
+    expect((await t.call('company', 'GET', `/api/v1/traceability/${await codeOf('FCF-T-001')}`)).body.approved.heats).toEqual(['HT-77812']);
+    const fin = await t.call('company', 'POST', `/api/v1/validations/${r.body.code}/finalize`);
     expect(fin.body.finalizedAt).toBeTruthy();
-    expect((await t.call('inspector', 'POST', `/api/v1/validations/${r.body.code}/fields/heat_number/review`, { action: 'ACCEPT' })).status).toBe(409);
+    expect((await t.call('company', 'POST', `/api/v1/validations/${r.body.code}/fields/heat_number/review`, { action: 'ACCEPT' })).status).toBe(409);
   });
 
   it('low confidence: long exact identifiers match, short values still need a human', async () => {
@@ -268,7 +194,7 @@ describe('label OCR validation matrix', () => {
     const form = new FormData();
     form.set('payload', JSON.stringify({ ocr: ocr(['Name of the Supplier : Nordhaven Gusswerk GmbH', 'Heat No : S-24419', "QTY : 10/10 No's"]), barcodes: [{ format: 'QR_CODE', text: `https://example.test/spir/#/t/${await tokenFor(trc)}` }] }));
     form.set('image', new File([new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])], 'label.jpg', { type: 'image/jpeg' }));
-    const r = await t.call('inspector', 'POST', '/api/v1/validations', form);
+    const r = await t.call('company', 'POST', '/api/v1/validations', form);
     expect(r.body.resolution.method).toBe('QR_TOKEN');
     expect(r.body.record.traceabilityCode).toBe(trc);
     expect(field(r, 'heat_number').result).toBe('MATCH');
@@ -282,7 +208,7 @@ describe('label OCR validation matrix', () => {
     expect(r.body.overallStatus).toBe('UNRESOLVED');
     expect(r.body.resolution.status).toBe('AMBIGUOUS');
     expect(r.body.resolution.candidates.length).toBe(3);
-    const res = await t.call('inspector', 'POST', `/api/v1/validations/${r.body.code}/resolve`, { traceabilityCode: r.body.resolution.candidates[0].code });
+    const res = await t.call('company', 'POST', `/api/v1/validations/${r.body.code}/resolve`, { traceabilityCode: r.body.resolution.candidates[0].code });
     expect(res.body.resolution.method).toBe('MANUAL_SELECTION');
     const line2 = await run({ ocr: ocr(['Part No : 24B3170X012', 'PO No : 7700104512 LINE 2']) });
     expect(line2.body.record.traceabilityCode).toBe(await codeOf('FCF-T-002'));
@@ -291,9 +217,9 @@ describe('label OCR validation matrix', () => {
     expect(poLine.body.record.traceabilityCode).toBe(await codeOf('FCF-T-002'));
   });
 
-  it('only inspection roles can run validations', async () => {
-    expect((await t.call('qr-user', 'POST', '/api/v1/validations', { ocr: ocr(supplierLabel) })).status).toBe(403);
-    expect((await t.call('supplier-fcf', 'POST', '/api/v1/validations', { ocr: ocr(supplierLabel) })).status).toBe(403);
+  it('only the company portal can run label checks', async () => {
+    expect((await t.call(null, 'POST', '/api/v1/validations', { ocr: ocr(supplierLabel) })).status).toBe(401);
+    expect((await t.call('supplier', 'POST', '/api/v1/validations', { ocr: ocr(supplierLabel) })).status).toBe(403);
   });
 });
 
@@ -304,7 +230,8 @@ describe('golden corpus: real Tesseract.js + ZXing output for seed/labels/*.png'
   const expected: Record<string, { status: string; record: string; fields: Record<string, string> }> = {
     'supplier-label-fcf-t001-correct.png': { status: 'PASS', record: 'FCF-T-001', fields: { part_number: 'MATCH', purchase_order_number: 'MATCH', po_line_number: 'MATCH', quantity: 'MATCH', heat_number: 'MATCH', supplier_name: 'MATCH' } },
     'supplier-label-fcf-t001-wrong-quantity.png': { status: 'FAIL', record: 'FCF-T-001', fields: { quantity: 'MISMATCH' } },
-    'supplier-label-fcf-t003-quantity-only-in-pending-version.png': { status: 'FAIL', record: 'FCF-T-003', fields: { quantity: 'MISMATCH', heat_number: 'MATCH' } },
+    // This photo showed the quantity of a pending update. Updates are now live at once, so the label matches.
+    'supplier-label-fcf-t003-quantity-only-in-pending-version.png': { status: 'PASS', record: 'FCF-T-003', fields: { quantity: 'MATCH', heat_number: 'MATCH' } },
     'receiving-label-fcf-t002.png': { status: 'NEEDS_REVIEW', record: 'FCF-T-002', fields: { part_number: 'MATCH', purchase_order_number: 'MATCH', po_line_number: 'MATCH', quantity: 'MATCH', supplier_name: 'MISSING_ON_LABEL' } },
     'supplier-label-dac-t001-angled-blurry.png': { status: 'NEEDS_REVIEW', record: 'DAC-T-001', fields: { heat_number: 'REVIEW_REQUIRED', quantity: 'REVIEW_REQUIRED', supplier_name: 'MATCH' } },
     'supplier-label-nhg-t001-with-rt-and-pattern.png': { status: 'PASS_WITH_WARNINGS', record: 'NHG-T-001', fields: { pattern_number: 'MATCH', radiographic_test_number: 'MATCH', heat_number: 'MATCH' } },
@@ -316,7 +243,7 @@ describe('golden corpus: real Tesseract.js + ZXing output for seed/labels/*.png'
     g = await setup();
   }, 60_000);
   it.each(Object.keys(expected))('%s', async (file) => {
-    const r = await g.call('inspector', 'POST', '/api/v1/validations', corpus[file]);
+    const r = await g.call('company', 'POST', '/api/v1/validations', corpus[file]);
     const want = expected[file];
     const rec = (await g.db.one<{ traceability_code: string }>('SELECT traceability_code FROM spir.traceability_record WHERE external_ref = $1', [want.record]))!;
     expect(r.body.record?.traceabilityCode).toBe(rec.traceability_code);

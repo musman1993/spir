@@ -1,15 +1,11 @@
-// Product registry (spec 8.2). A product is a stable identity; its descriptive data is versioned.
+// Product registry (read only). Products are created and updated through the supplier's shipments.
 import { Hono } from 'hono';
-import { z } from 'zod';
 import type { AppEnv } from '../app.js';
 import type { Db } from '../providers/db.js';
 import type { Principal } from '../providers/auth.js';
-import { assertSupplierScope, isSupplier, principal, requireRole, seesUnpublished } from '../lib/authz.js';
-import { conflict, forbidden, invalid, notFound } from '../lib/errors.js';
-import { audit } from '../lib/audit.js';
-import { normIdentifier } from '../domain/normalize.js';
-import { loadDefinitions, validateAttributes } from './attributes.js';
-import { submitDraft, upsertDraft, userNames, versionView, versions } from './versioning.js';
+import { isSupplier, principal } from '../lib/authz.js';
+import { notFound } from '../lib/errors.js';
+import { userNames, versionView, versions } from './versioning.js';
 
 export async function findProduct(db: Db, code: string) {
   return db.one<{ id: string; product_code: string; supplier_id: string; category_code: string; current_approved_version_id: string | null }>(
@@ -22,19 +18,8 @@ export async function visibleProduct(db: Db, p: Principal, code: string) {
   const prod = await findProduct(db, code);
   if (!prod) throw notFound('Product');
   if (isSupplier(p) && prod.supplier_id !== p.supplierId) throw notFound('Product');
-  if (!isSupplier(p) && !seesUnpublished(p) && !prod.current_approved_version_id) throw notFound('Product');
   return prod;
 }
-
-const createSchema = z.object({
-  categoryCode: z.string().min(1),
-  productName: z.string().trim().min(2).max(200),
-  description: z.string().max(2000).optional().nullable(),
-  partNumber: z.string().trim().min(2).max(80),
-  supplierPartNumber: z.string().trim().max(80).optional().nullable(),
-  attributes: z.record(z.any()).default({}),
-});
-const draftSchema = createSchema.pick({ productName: true, description: true, attributes: true });
 
 export function productRoutes() {
   const r = new Hono<AppEnv>();
@@ -64,7 +49,7 @@ export function productRoutes() {
           AND ($3 = '' OR pr.product_code ILIKE '%'||$3||'%' OR coalesce(av.product_name, lv.product_name) ILIKE '%'||$3||'%'
                OR EXISTS (SELECT 1 FROM spir.product_identifier i WHERE i.product_id = pr.id AND i.value ILIKE '%'||$3||'%'))
         ORDER BY s.legal_name, pr.product_code`,
-      [isSupplier(p) ? p.supplierId : null, isSupplier(p) || seesUnpublished(p), q],
+      [isSupplier(p) ? p.supplierId : null, true, q],
     );
     return c.json({ products: rows });
   });
@@ -93,10 +78,10 @@ export function productRoutes() {
            LEFT JOIN LATERAL (SELECT * FROM spir.traceability_version x WHERE x.traceability_id = t.id ORDER BY version_no DESC LIMIT 1) lv ON true
           WHERE t.product_id = $1 AND ($2 OR t.current_approved_version_id IS NOT NULL)
           ORDER BY t.traceability_code`,
-        [prod.id, isSupplier(p) || seesUnpublished(p)],
+        [prod.id, true],
       ),
     ]);
-    const visible = isSupplier(p) || seesUnpublished(p) ? all : all.filter((v) => v.status === 'APPROVED');
+    const visible = all;
     const approved = all.find((v) => v.status === 'APPROVED');
     return c.json({
       code: prod.product_code,
@@ -107,78 +92,6 @@ export function productRoutes() {
       versions: visible.map((v) => ({ ...versionView(v, names), productName: v.product_name, description: v.description })),
       traceability: records,
     });
-  });
-
-  // Supplier registers a new product: creates the stable Product ID + DRAFT v1.
-  r.post('/products', async (c) => {
-    const p = requireRole(c, 'SUPPLIER_CONTRIBUTOR');
-    const { db } = c.get('services');
-    const body = createSchema.parse(await c.req.json());
-    const defs = await loadDefinitions(db);
-    const { clean, errors } = validateAttributes(defs, 'PRODUCT', body.categoryCode, body.attributes, false);
-    if (errors.length) throw invalid('Some attributes are not valid.', errors);
-    const result = await db.tx(async (tx) => {
-      const cat = await tx.one('SELECT code FROM spir.product_category WHERE code = $1', [body.categoryCode]);
-      if (!cat) throw invalid(`Unknown category ${body.categoryCode}.`);
-      const supplier = (await tx.one<{ supplier_code: string }>('SELECT supplier_code FROM spir.supplier WHERE id = $1', [p.supplierId]))!;
-      // Duplicate control (FR-PRD-006): a supplier registers each company part number once.
-      // Identifiers are namespaced by the registering supplier, so two suppliers may supply the same part.
-      const dup = await tx.one<{ product_code: string }>(
-        `SELECT pr.product_code FROM spir.product_identifier i JOIN spir.product pr ON pr.id = i.product_id
-          WHERE i.issuer = $1 AND i.id_type = 'COMPANY_PART_NUMBER' AND upper(i.value) = $2`,
-        [supplier.supplier_code, normIdentifier(body.partNumber)],
-      );
-      if (dup) throw conflict('DUPLICATE_PRODUCT', `Part number already registered as ${dup.product_code}. Update that product instead.`, { productCode: dup.product_code });
-      const prod = (await tx.one<{ id: string; product_code: string }>(
-        'INSERT INTO spir.product (supplier_id, category_code) VALUES ($1, $2) RETURNING id, product_code', [p.supplierId, body.categoryCode],
-      ))!;
-      await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1, 'COMPANY_PART_NUMBER', $2, $3)`,
-        [prod.id, supplier.supplier_code, body.partNumber.trim()]);
-      if (body.supplierPartNumber?.trim()) {
-        await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1, 'SUPPLIER_PART_NUMBER', $2, $3)`,
-          [prod.id, supplier.supplier_code, body.supplierPartNumber.trim()]);
-      }
-      const v = await upsertDraft(tx, 'product', prod.id, { product_name: body.productName, description: body.description ?? null, attributes: clean }, p);
-      await audit(tx, p, 'CREATE', 'product', prod.id, { productCode: prod.product_code, versionNo: v.version_no }, c.get('cid'));
-      return { code: prod.product_code, versionNo: v.version_no, status: v.status };
-    });
-    return c.json(result, 201);
-  });
-
-  // Create/update the open draft (a new version if the latest is approved or rejected).
-  r.put('/products/:code/draft', async (c) => {
-    const p = requireRole(c, 'SUPPLIER_CONTRIBUTOR');
-    const { db } = c.get('services');
-    const body = draftSchema.parse(await c.req.json());
-    const prod = await visibleProduct(db, p, c.req.param('code'));
-    assertSupplierScope(p, prod.supplier_id);
-    const defs = await loadDefinitions(db);
-    const { clean, errors } = validateAttributes(defs, 'PRODUCT', prod.category_code, body.attributes, false);
-    if (errors.length) throw invalid('Some attributes are not valid.', errors);
-    const v = await db.tx(async (tx) => {
-      const row = await upsertDraft(tx, 'product', prod.id, { product_name: body.productName, description: body.description ?? null, attributes: clean }, p);
-      await audit(tx, p, 'SAVE_DRAFT', 'product', prod.id, { versionNo: row.version_no }, c.get('cid'));
-      return row;
-    });
-    return c.json({ code: prod.product_code, version: versionView(v) });
-  });
-
-  r.post('/products/:code/submit', async (c) => {
-    const p = requireRole(c, 'SUPPLIER_CONTRIBUTOR');
-    const { db } = c.get('services');
-    const prod = await visibleProduct(db, p, c.req.param('code'));
-    if (prod.supplier_id !== p.supplierId) throw forbidden();
-    const defs = await loadDefinitions(db);
-    const v = await db.tx(async (tx) => {
-      const open = await tx.one<{ attributes: Record<string, string> }>(
-        `SELECT attributes FROM spir.product_version WHERE product_id = $1 AND status = 'DRAFT'`, [prod.id]);
-      if (open) {
-        const { errors } = validateAttributes(defs, 'PRODUCT', prod.category_code, open.attributes, true);
-        if (errors.length) throw invalid('The draft is incomplete.', errors);
-      }
-      return submitDraft(tx, 'product', prod.id, p, c.get('cid'));
-    });
-    return c.json({ code: prod.product_code, version: versionView(v) });
   });
 
   return r;

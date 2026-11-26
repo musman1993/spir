@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { createApp } from '../src/app.js';
 import { readConfig, type Services } from '../src/config.js';
-import { createDemoHeaderAuth, createOpenAuth } from '../src/providers/auth.js';
+import { createPortalAuth } from '../src/providers/auth.js';
 import { createPGliteDatabase } from '../src/providers/db.js';
 import { createMemoryStorage } from '../src/providers/storage.js';
 import { runMigrations } from '../src/lib/migrate.js';
@@ -21,9 +21,8 @@ const storage = createMemoryStorage(config.fileSigningSecret);
 const report = process.env.SEED === 'empty' ? 'empty database' : await loadSeed(db, storage, config.qrKey, seedFiles(root), {
   documentsDir: path.join(root, 'seed/documents'),
 });
-const authMode = process.env.AUTH_MODE ?? 'open';
-const services: Services = { db, storage, auth: authMode === 'demo' ? createDemoHeaderAuth(db) : createOpenAuth(), config };
+const services: Services = { db, storage, auth: createPortalAuth(db, config.sessionSecret), config };
 const port = Number(process.env.PORT ?? 8787);
 serve({ fetch: createApp(services).fetch, port }, () => {
-  console.log(`SPIR API (in-memory, auth: ${authMode}) on http://localhost:${port}`, report);
+  console.log(`SPIR API (in-memory) on http://localhost:${port}. Supplier and company portals: admin / admin`, report);
 });

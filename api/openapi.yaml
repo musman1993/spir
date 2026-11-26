@@ -1,7 +1,12 @@
 openapi: 3.1.0
 info:
+  x-note: >-
+    v0.5: two portals. Sign in with POST /auth/login {portal: supplier|company, username, password} and send
+    Authorization: Bearer <token>. New: /me, /supplier/profile (GET, PUT), /supplier/shipments (POST),
+    /supplier/shipments/{code} (PUT), /qr/{token}/documents/{code} (public). Removed: /demo-users, /review-queue,
+    /review/..., POST/PUT/submit on /products and /traceability. /qr/{token} is public.
   title: SPIR internal API
-  version: 0.2.0
+  version: 0.5.0
   description: |
     Company application interface for the Supplier Product Information Registry (spec section 11).
     This is NOT an X12 endpoint. Supplier EDI (832/841) arrives through a separate adapter (planned).

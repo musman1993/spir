@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { appBaseUrl, qrLinkFor } from '../api';
+import { useLinks } from '../session';
 import { useBrandLogo } from '../qr/brand';
 import { labelPng, SheetLabel } from '../qr/labels';
 import { renderQr, svgDataUrl, type QrArt } from '../qr/render';
@@ -22,6 +23,7 @@ function download(href: string, name: string) {
 
 export function QrLabels() {
   const [params] = useSearchParams();
+  const links = useLinks();
   const [data, error] = useApi<{ labels: Label[] }>('/qr-labels');
   const logo = useBrandLogo();
   const [q, setQ] = useState('');
@@ -96,11 +98,11 @@ export function QrLabels() {
     <>
       <div className="page-head no-print">
         <h1>QR labels</h1>
-        <p className="lede">One QR code per shipment record. Scanning it with a phone camera opens that shipment in SPIR. The code never
-          changes when a later import updates the data, so a printed label stays valid.</p>
+        <p className="lede">One QR code per shipment. Anyone who scans it with a phone camera sees that shipment's details and certificates,
+          no sign-in needed. The code never changes when you update the data, so a printed label stays valid.</p>
       </div>
       {data.labels.length === 0 ? (
-        <div className="empty">No QR codes yet. <Link to="/import">Import a CSV</Link> to create them.</div>
+        <div className="empty">No QR codes yet. <Link to={links.newShipment}>Add a shipment</Link> or <Link to={links.importCsv}>upload a CSV</Link> to create them.</div>
       ) : (
         <>
           <section className="panel no-print">
@@ -184,8 +186,8 @@ export function QrLabels() {
                       <div className="small muted">{l.description}</div>
                       {art && <div className={`small check ${art.verified ? 'ok' : 'bad'}`}>{art.verified ? 'Scan check passed' : 'Scan check failed'}</div>}
                       <div className="row" style={{ marginTop: 6 }}>
-                        <Link className="btn small" to={`/records/${l.code}`}>Details</Link>
-                        {l.token && <Link className="btn small" to={`/t/${l.token}`}>Open as scanned</Link>}
+                        <Link className="btn small" to={links.record(l.code)}>Details</Link>
+                        {l.token && <Link className="btn small" to={links.scanned(l.token)}>Open as scanned</Link>}
                         <button className="btn small" disabled={!art} onClick={() => pngOne(l)}>PNG</button>
                       </div>
                     </div>

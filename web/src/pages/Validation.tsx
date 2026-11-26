@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../api';
-import { useSession } from '../session';
+import { useLinks } from '../session';
 import { ErrorBox, Id, Loading, Modal, RESULT_LABEL, Stamp, fmtDate, useAction, useApi } from '../ui';
 
 const VERDICT_TEXT: Record<string, string> = {
@@ -90,7 +90,7 @@ function ReviewDialog({ run, field, onClose, onSaved }: { run: any; field: any; 
 
 export function ValidationRun() {
   const { code } = useParams();
-  const { me } = useSession();
+  const links = useLinks();
   const [run, error, , setRun] = useApi<any>(`/validations/${code}`);
   const [focus, setFocus] = useState<any | null>(null);
   const [reviewing, setReviewing] = useState<any | null>(null);
@@ -98,7 +98,7 @@ export function ValidationRun() {
   const { busy, error: actErr, run: act } = useAction();
   if (error) return <ErrorBox error={error} />;
   if (!run) return <Loading />;
-  const canAct = ['OPERATOR', 'INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'].includes(me!.role) && !run.finalizedAt;
+  const canAct = !run.finalizedAt;
   const resolve = (traceabilityCode: string) => act(async () => setRun(await api(`/validations/${code}/resolve`, { body: { traceabilityCode } })));
   const finalize = () => act(async () => setRun(await api(`/validations/${code}/finalize`, { method: 'POST' })));
   const needsAttention = run.fields.filter((f: any) => !['MATCH', 'NOT_APPLICABLE', 'NOT_CHECKED'].includes(f.effectiveResult) && !f.review);
@@ -106,7 +106,7 @@ export function ValidationRun() {
   return (
     <>
       <div className="page-head">
-        <p className="muted small" style={{ marginBottom: 4 }}><Link to="/validations">Label check history</Link></p>
+        <p className="muted small" style={{ marginBottom: 4 }}><Link to={links.checks}>Label check history</Link></p>
         <h1>Label check <Id>{run.code}</Id></h1>
         <p className="muted small">By {run.operator}, {fmtDate(run.createdAt)}. Profile {run.labelProfile.key} v{run.labelProfile.version}, OCR {run.ocr.engine} {run.ocr.engineVersion ?? ''}, rules {run.ruleVersion}.</p>
       </div>
@@ -116,7 +116,7 @@ export function ValidationRun() {
         <div>
           <div>{VERDICT_TEXT[run.overallStatus]}</div>
           {run.record && <div className="small" style={{ marginTop: 4 }}>
-            Compared with <Link to={`/records/${run.record.traceabilityCode}`}><Id>{run.record.traceabilityCode}</Id></Link> (approved version {run.record.pinnedTraceabilityVersion}) and product <Id>{run.record.productCode}</Id> version {run.record.pinnedProductVersion}. Matched by {String(run.resolution.method).replace(/_/g, ' ').toLowerCase()}: {run.resolution.note}
+            Compared with <Link to={links.record(run.record.traceabilityCode)}><Id>{run.record.traceabilityCode}</Id></Link> (approved version {run.record.pinnedTraceabilityVersion}) and product <Id>{run.record.productCode}</Id> version {run.record.pinnedProductVersion}. Matched by {String(run.resolution.method).replace(/_/g, ' ').toLowerCase()}: {run.resolution.note}
           </div>}
           {run.finalizedAt && <div className="small" style={{ marginTop: 4 }}>Finalised {fmtDate(run.finalizedAt)}. This check can no longer be changed.</div>}
         </div>
@@ -200,13 +200,14 @@ export function ValidationRun() {
 }
 
 export function Validations() {
+  const links = useLinks();
   const [data, error] = useApi<{ runs: any[] }>('/validations');
   const [disc] = useApi<{ discrepancies: any[] }>('/discrepancies');
   return (
     <>
       <div className="spread page-head">
         <div><h1>Label check history</h1><p className="lede">Every check keeps its photo, raw OCR text, the exact record versions compared and every reviewer decision.</p></div>
-        <Link className="btn primary" to="/label-check">Check a product label</Link>
+        <Link className="btn primary" to={links.labelCheck}>Check a product label</Link>
       </div>
       <ErrorBox error={error} />
       {!data && !error && <Loading />}
@@ -216,7 +217,7 @@ export function Validations() {
             <thead><tr><th>Check</th><th>When</th><th>Record</th><th>Result</th><th>Matched by</th><th>Operator</th><th>Discrepancies</th></tr></thead>
             <tbody>{data.runs.map((r) => (
               <tr key={r.code}>
-                <td><Link to={`/validations/${r.code}`}><Id>{r.code}</Id></Link></td>
+                <td><Link to={links.check(r.code)}><Id>{r.code}</Id></Link></td>
                 <td className="small">{fmtDate(r.createdAt)}</td>
                 <td>{r.traceabilityCode ? <Id>{r.traceabilityCode}</Id> : <span className="muted">-</span>}</td>
                 <td><Stamp result={r.overallStatus} />{r.finalizedAt ? '' : <div className="small muted">open</div>}</td>
@@ -234,7 +235,7 @@ export function Validations() {
           <div className="table-wrap"><table className="table">
             <thead><tr><th>ID</th><th>Check</th><th>Record</th><th>Field</th><th>Severity</th><th>Description</th><th>Status</th></tr></thead>
             <tbody>{disc.discrepancies.map((d) => (
-              <tr key={d.code}><td><Id>{d.code}</Id></td><td><Link to={`/validations/${d.runCode}`}><Id>{d.runCode}</Id></Link></td><td><Id>{d.traceabilityCode ?? '-'}</Id></td>
+              <tr key={d.code}><td><Id>{d.code}</Id></td><td><Link to={links.check(d.runCode)}><Id>{d.runCode}</Id></Link></td><td><Id>{d.traceabilityCode ?? '-'}</Id></td>
                 <td className="small">{d.attributeKey?.replace(/_/g, ' ') ?? '-'}</td><td>{d.severity.toLowerCase()}</td><td className="small">{d.description}</td><td>{d.status.toLowerCase()}</td></tr>
             ))}</tbody>
           </table></div>

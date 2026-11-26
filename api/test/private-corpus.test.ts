@@ -6,7 +6,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { readConfig } from '../src/config.js';
-import { createDemoHeaderAuth } from '../src/providers/auth.js';
+import { createPortalAuth } from '../src/providers/auth.js';
 import { createPGliteDatabase } from '../src/providers/db.js';
 import { createMemoryStorage } from '../src/providers/storage.js';
 import { runMigrations } from '../src/lib/migrate.js';
@@ -24,12 +24,14 @@ describe.skipIf(!existsSync(fixture) || !existsSync(expectations))('private corp
     const config = readConfig({ QR_TOKEN_KEY: Buffer.alloc(32, 7).toString('base64') });
     const storage = createMemoryStorage(config.fileSigningSecret);
     await loadSeed(db, storage, config.qrKey, seedFiles(ROOT));
-    const app = createApp({ db, storage, auth: createDemoHeaderAuth(db), config });
+    const auth = createPortalAuth(db, config.sessionSecret);
+    const app = createApp({ db, storage, auth, config });
+    const token = (await auth.login('company', 'admin', 'admin'))!.token;
     const corpus = JSON.parse(readFileSync(fixture, 'utf8'));
     const want: Record<string, { status: string; record?: string; fields?: Record<string, string> }> = JSON.parse(readFileSync(expectations, 'utf8'));
     for (const [file, w] of Object.entries(want)) {
       const res = await app.request('http://t/api/v1/validations', {
-        method: 'POST', headers: { 'X-SPIR-User': 'inspector', 'Content-Type': 'application/json' }, body: JSON.stringify(corpus[file]),
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(corpus[file]),
       });
       const r = await res.json();
       expect([file, r.overallStatus]).toEqual([file, w.status]);

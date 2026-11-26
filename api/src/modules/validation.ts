@@ -19,7 +19,7 @@ import { associations } from './traceability.js';
 
 export const RESOLVER_VERSION = 'resolver-v2';
 export const RULE_VERSION = `${COMPARE_RULE_VERSION}/${OVERALL_POLICY_VERSION}/${RESOLVER_VERSION}`;
-const VALIDATION_ROLES = ['INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'] as const;
+const VALIDATION_ROLES = ['COMPANY'] as const;
 
 const payloadSchema = z.object({
   labelProfileKey: z.string().default('RECEIVING_LABELS'),
@@ -326,7 +326,7 @@ export function validationRoutes() {
   });
 
   r.get('/validations', async (c) => {
-    requireRole(c, ...VALIDATION_ROLES, 'AUDITOR');
+    requireRole(c, ...VALIDATION_ROLES);
     const { db } = c.get('services');
     const rows = await db.query(
       `SELECT r.run_code AS "code", r.overall_status AS "overallStatus", r.created_at AS "createdAt", r.finalized_at AS "finalizedAt",
@@ -342,7 +342,7 @@ export function validationRoutes() {
   });
 
   r.get('/validations/:code', async (c) => {
-    requireRole(c, ...VALIDATION_ROLES, 'AUDITOR');
+    requireRole(c, ...VALIDATION_ROLES);
     const { db, storage } = c.get('services');
     return c.json(await runDetail(db, storage, c, c.req.param('code')));
   });
@@ -453,7 +453,7 @@ export function validationRoutes() {
 
   r.get('/discrepancies', async (c) => {
     principal(c);
-    requireRole(c, ...VALIDATION_ROLES, 'AUDITOR');
+    requireRole(c, ...VALIDATION_ROLES);
     const rows = await c.get('services').db.query(
       `SELECT d.discrepancy_code AS "code", r.run_code AS "runCode", t.traceability_code AS "traceabilityCode", d.attribute_key AS "attributeKey",
               d.severity, d.classification, d.description, d.status, u.display_name AS "createdBy", d.created_at AS "createdAt"

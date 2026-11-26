@@ -10,8 +10,8 @@ export class ApiError extends Error {
   }
 }
 
-export const unauthenticated = () => new ApiError(401, 'UNAUTHENTICATED', 'Sign in (choose a demo user) to continue.');
-export const forbidden = (msg = 'Your role is not allowed to do this.') => new ApiError(403, 'FORBIDDEN', msg);
+export const unauthenticated = () => new ApiError(401, 'UNAUTHENTICATED', 'Sign in to continue.');
+export const forbidden = (msg = 'You are not allowed to do this.') => new ApiError(403, 'FORBIDDEN', msg);
 export const notFound = (what = 'Resource') => new ApiError(404, 'NOT_FOUND', `${what} not found.`);
 export const conflict = (code: string, msg: string, details?: unknown) => new ApiError(409, code, msg, details);
 export const invalid = (msg: string, details?: unknown) => new ApiError(422, 'VALIDATION_FAILED', msg, details);

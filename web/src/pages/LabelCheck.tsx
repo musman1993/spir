@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLinks } from '../session';
 import { api } from '../api';
 import type { BarcodeRead, CameraDevice } from '../devices';
 import { zxingBarcode } from '../devices/barcode';
@@ -45,6 +46,7 @@ type Stage = 'capture' | 'review' | 'reading' | 'read';
 
 export function LabelCheck() {
   const nav = useNavigate();
+  const links = useLinks();
   const [params] = useSearchParams();
   const pinned = params.get('record');
   const [profiles] = useApi<{ profiles: { key: string; version: number; name: string }[] }>('/label-profiles');
@@ -127,7 +129,7 @@ export function LabelCheck() {
       },
     }));
     const r = await api<{ code: string }>('/validations', { form });
-    nav(`/validations/${r.code}`);
+    nav(links.check(r.code));
   });
 
   const reset = () => { setStage('capture'); setOriginal(null); setImg(null); setOcr(null); setBarcodes([]); setError(null); };
@@ -137,7 +139,7 @@ export function LabelCheck() {
       <div className="page-head">
         <h1>Check a product label</h1>
         <p className="lede">Photograph the supplier's sticker or tag. SPIR reads it and compares every field with the approved record. Nothing on the label ever changes the registry.</p>
-        {pinned && <div className="notice">Comparing against record <Id>{pinned}</Id> (from the QR label you scanned). <Link to="/label-check">Identify the record from the label instead</Link></div>}
+        {pinned && <div className="notice">Comparing against record <Id>{pinned}</Id> (from the QR label you scanned). <Link to={links.labelCheck}>Identify the record from the label instead</Link></div>}
       </div>
 
       <div className="grid-2">

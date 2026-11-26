@@ -12,30 +12,37 @@ built from *SPIR Architecture & Requirements Specification v1.1*. This PoC uses 
 A product is one company part number from one supplier. Each **shipment** against a PO line is a separate
 record with its own versions, certificates and QR label.
 
-## How it works right now (open mode)
+## How it works right now: two portals
 
-There is **no sign-in and there are no roles** for now. Everyone is a generic "operator". The supplier portal
-and approval workflow are still in the code, switched off, ready to become the supplier module later.
+| | Address | Sign-in (default) | What it does |
+|---|---|---|---|
+| **Supplier portal** | `/#/supplier` | `admin` / `admin` | Supplier profile, add or edit shipments (form), upload many at once (CSV), print QR labels, upload certificates |
+| **Company portal** | `/#/company` | `admin` / `admin` | Scan QR labels, search every supplier's shipments, check a product label photo (OCR), label check history |
+| **QR scan** | `/#/t/<token>` | none | Anyone who scans a label with a phone camera sees that shipment's details and certificates |
 
-1. **Import CSV:** one row per shipment (part number, PO + line, quantity, heats, pattern number, supplier...).
-   SPIR creates a shipment record and **a QR code for each new row**.
-2. **QR labels:** print them on A4 sticker sheets (8, 14 or 21 per sheet), download 300 dpi PNGs, or export the links as CSV.
-3. **Scan a QR code** with a phone camera, webcam or handheld scanner to see the shipment's details and certificates.
+1. **Supplier profile (once):** the supplier name and contact details. Every shipment and QR label carries this name.
+2. **Add shipments:** with the form, one at a time, or with a CSV file, many at once (no supplier column needed).
+   Saved data is **live straight away** and every new shipment gets **its own QR code**.
+3. **Print QR labels:** on A4 sticker sheets (8, 14 or 21 per sheet), as 300 dpi PNGs, or export the links as CSV.
+4. **Scan:** anyone with a phone camera, or the company portal's scanner (camera, webcam or handheld scanner).
 
-**Updating:** change the CSV and import it again. A changed row adds a new version to the same record, and **its
-printed QR code keeps working and shows the new data**. Identical rows are skipped. If any row is missing a mandatory
-field, nothing is imported and every problem is listed by row. A shipment is identified by supplier + part number +
-PO + line.
+**Updating:** edit a shipment, or upload the CSV again. A change adds a new version under the **same QR code**, so
+printed labels keep working and show the new data. Part number, PO and line identify a shipment and its QR code, so
+they can't change in an edit. If any CSV row is missing a mandatory field, nothing is imported and every problem is
+listed by row.
 
-> **Open mode means no access control.** Anyone who can reach the app can read and change the data. Keep real data on
-> a private address. A Codespace with **private** ports is ideal, because GitHub asks for your login. Don't publish real
-> data to a public GitHub Pages URL in this mode. To bring back the role switcher, set `AUTH_MODE=demo`.
+There are only two accounts for now (role-based access comes later). The previous design, with the role switcher,
+supplier/reviewer/inspector roles and the approval workflow, is kept on the git branch **`archive/roles-and-review`**.
+
+> **The default sign-in is not protection.** `admin` / `admin` is the same for everyone, and QR scans are open to
+> anyone by design. Keep real data on a private address (a Codespace with **private** ports is ideal) until proper
+> accounts arrive. Don't put real data on a public GitHub Pages site.
 
 ## How it is put together
 
 ```
 GitHub Pages (React web app, public static files - no secrets)
-      |  HTTPS + X-SPIR-User header (demo sign-in)
+      |  HTTPS + "Authorization: Bearer <session>" (portal sign-in; QR scans need none)
       v
 Neon Function "spirapi"  (Node 24, Hono, one modular monolith)
       |-- Neon Postgres   schema "spir": products, versions, heats/batches, QR tokens, validation runs, audit
@@ -56,12 +63,13 @@ Neon Function "spirapi"  (Node 24, Hono, one modular monolith)
 
 ```bash
 npm install
-npm run dev:empty     # empty registry: import your own CSV
+npm run dev:empty     # empty registry: set up the supplier profile, then add shipments
 # or
 npm run dev:memory    # with the demo data (+ your private seed/local/*.csv)
 ```
 
-Open the **Ports** tab and click the globe icon next to port **5173**. Go to **Import CSV**.
+Open the **Ports** tab and click the globe icon next to port **5173**, then add `#/supplier` or `#/company` to the
+address. Both portals sign in with `admin` / `admin`. With the demo data, the supplier account is Falcon Crest Foundry.
 
 ### Option B: against your Neon database
 
@@ -128,7 +136,7 @@ Everything comes from **`seed/spir_seed.csv`**, one row per version of a manufac
 Excel or the Codespace CSV viewer. The full guide is in [`seed/README.md`](seed/README.md). The short version:
 
 * `supplier_ref`, `product_ref`, `traceability_ref` are **your** linking keys. SPIR creates the official IDs.
-* Repeat a `traceability_ref` on a later row to create a **newer version** (e.g. `APPROVED` then `PENDING`).
+* Repeat a `traceability_ref` on a later row to create a **newer version** (the later row is the live one).
 * Lists use `|`: `HT-77813|HT-77814`. Documents use `TYPE:file.pdf`.
 * **Real data goes in `seed/local/*.csv`** (git-ignored, loaded after the demo file). Never put real POs in the main CSV: the repo is public.
 * Add a new column and it becomes a new **attribute** automatically. No code change needed.
@@ -179,24 +187,28 @@ To add your real photos to the test suite privately, see `api/test/private-corpu
 npm test
 ```
 
-61 tests run the whole API against an in-process Postgres with the real seed CSV. They cover supplier isolation,
-approval and supersede rules, QR tokens (401/403/404/410, rotation), signed downloads, the field results, the
-overall status policy, CSV import (create, update under the same QR, reject with row errors), and a golden corpus of **real Tesseract + ZXing output** from the demo photos. A private corpus of real
-label photos runs only where its git-ignored files exist.
+63 tests run the whole API against an in-process Postgres with the real seed CSV. They cover portal sign-in and
+tampered tokens, keeping each portal to its own pages, supplier isolation, the supplier profile, the shipment form
+(create, validation, edit with locked identity), CSV import (create, update under the same QR, reject with row
+errors), public QR scans and certificate downloads, label replacement, the label-check field results and overall
+status, and a golden corpus of **real Tesseract + ZXing output** from the demo photos. A private corpus of real label
+photos runs only where its git-ignored files exist.
 
 ## Security notes for this PoC
 
-* **Demo sign-in is not authentication.** Anyone with the API URL can act as any demo user. Use fictional data
-  only. Production replaces `createDemoHeaderAuth` with company SSO (OIDC / Neon Managed Auth); the rest is unchanged.
+* **Fixed `admin` / `admin` sign-in.** Sessions are signed (HMAC, 12 hours), but the credentials are the same for
+  everyone. Proper accounts and role-based access are the next step; only `api/src/providers/auth.ts` changes.
+* **QR scans are public by request.** A scan shows that one shipment and its certificates, nothing else; lookups are
+  rate limited, and a label's token only opens its own record's certificates. Revoke a label to stop it working.
 * GitHub Pages sites are public. The web build holds no secrets, only the API URL.
-* QR codes contain only a random 256-bit token. It's stored hashed for lookup and AES-GCM encrypted for re-printing.
+* QR codes contain only a random token. It's stored hashed for lookup and AES-GCM encrypted for re-printing.
 * The database and bucket credentials exist only in `.env` (git-ignored) and Neon's own injected variables.
 
 ## Not in this PoC yet (next steps)
 
 * **X12 832/841** intake and 997/999 acknowledgments (spec section 10). The canonical model and `source = 'EDI'`
   are ready for the adapter.
-* Real sign-in (company SSO), supplier user administration, multi-level approval.
+* Real accounts and role-based access (company SSO, one login per supplier user), approval workflow (see `archive/roles-and-review`).
 * Offline capture queue, edge connector for fixed cameras, malware scanning of uploads.
 * Admin screens to edit attribute definitions and label profiles (currently changed through migrations).
 
@@ -205,7 +217,7 @@ label photos runs only where its git-ignored files exist.
 | Path | What |
 |---|---|
 | `api/src/domain/` | Pure label-validation engine: normalization, extraction, comparison, overall policy |
-| `api/src/modules/` | Products, traceability, workflow, QR, validation, audit |
+| `api/src/modules/` | Portals (sign-in, profile, shipment form), products, traceability, QR, import, validation, audit |
 | `api/db/migrations/` | Schema and reference data (attributes, label profiles) |
 | `api/openapi.yaml` | API contract |
 | `web/src/pages/` | Screens. `web/src/devices/` holds the camera / scanner / OCR adapters |

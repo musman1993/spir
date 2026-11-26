@@ -1,17 +1,14 @@
 // Manufacturing traceability records + technical evidence (spec 8.3, 8.5).
 import { Hono } from 'hono';
 import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
 import { absoluteUrl, type AppEnv } from '../app.js';
 import type { Db } from '../providers/db.js';
 import type { Principal } from '../providers/auth.js';
-import { isSupplier, principal, requireRole, seesUnpublished } from '../lib/authz.js';
-import { ApiError, forbidden, invalid, notFound } from '../lib/errors.js';
+import { isSupplier, principal, requireSupplierProfile } from '../lib/authz.js';
+import { ApiError, invalid, notFound } from '../lib/errors.js';
 import { audit } from '../lib/audit.js';
 import { sha256Hex } from '../lib/crypto.js';
-import { loadDefinitions, validateAttributes } from './attributes.js';
-import { submitDraft, upsertDraft, userNames, versionView, versions, type VersionRow } from './versioning.js';
-import { visibleProduct } from './products.js';
+import { userNames, versionView, versions, type VersionRow } from './versioning.js';
 
 export async function findRecord(db: Db, code: string) {
   return db.one<{ id: string; traceability_code: string; product_id: string; external_ref: string | null; current_approved_version_id: string | null;
@@ -25,7 +22,6 @@ export async function visibleRecord(db: Db, p: Principal, code: string) {
   const rec = await findRecord(db, code);
   if (!rec) throw notFound('Traceability record');
   if (isSupplier(p) && rec.supplier_id !== p.supplierId) throw notFound('Traceability record');
-  if (!isSupplier(p) && !seesUnpublished(p) && !rec.current_approved_version_id) throw notFound('Traceability record');
   return rec;
 }
 
@@ -73,7 +69,8 @@ export async function documentsFor(db: Db, recordId: string, statuses: string[] 
   );
 }
 
-export async function recordDetail(db: Db, p: Principal, rec: NonNullable<Awaited<ReturnType<typeof findRecord>>>) {
+/** Full record view. `publicView` (QR scan without login) leaves out version history and uploaders. */
+export async function recordDetail(db: Db, _p: Principal | null, rec: NonNullable<Awaited<ReturnType<typeof findRecord>>>, publicView = false) {
   const [all, names, product, supplier, qr] = await Promise.all([
     versions(db, 'traceability', rec.id),
     userNames(db),
@@ -88,8 +85,7 @@ export async function recordDetail(db: Db, p: Principal, rec: NonNullable<Awaite
     db.one('SELECT supplier_code AS "code", legal_name AS "name", country_code AS "country" FROM spir.supplier WHERE id = $1', [rec.supplier_id]),
     db.one(`SELECT token_hint AS "hint", created_at AS "createdAt", status FROM spir.qr_token WHERE traceability_id = $1 AND status = 'ACTIVE'`, [rec.id]),
   ]);
-  const privileged = isSupplier(p) || seesUnpublished(p);
-  const visible = privileged ? all : all.filter((v) => v.status === 'APPROVED');
+  const visible = publicView ? all.filter((v) => v.status === 'APPROVED') : all;
   const withAssoc = async (v: VersionRow) => ({ ...versionView(v, names), ...(await associations(db, v.id)) });
   const approved = all.find((v) => v.status === 'APPROVED');
   return {
@@ -99,19 +95,10 @@ export async function recordDetail(db: Db, p: Principal, rec: NonNullable<Awaite
     supplier,
     approved: approved ? await withAssoc(approved) : null,
     versions: await Promise.all(visible.map(withAssoc)),
-    documents: await documentsFor(db, rec.id, privileged ? null : ['APPROVED', 'SUPERSEDED']),
+    documents: await documentsFor(db, rec.id, null),
     qr: qr ?? null,
   };
 }
-
-const bodySchema = z.object({
-  externalRef: z.string().trim().max(80).optional().nullable(),
-  heats: z.array(z.string().max(60)).default([]),
-  batches: z.array(z.string().max(60)).default([]),
-  serials: z.array(z.string().max(60)).max(5000).default([]),
-  attributes: z.record(z.any()).default({}),
-});
-const createSchema = bodySchema.extend({ productCode: z.string().min(1) });
 
 const ALLOWED_MEDIA: Record<string, string[]> = {
   'application/pdf': ['.pdf'], 'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'], 'text/plain': ['.txt'],
@@ -174,7 +161,7 @@ export function traceabilityRoutes() {
                            JOIN spir.traceability_version vv ON vv.id = vh.version_id
                           WHERE vv.traceability_id = t.id AND h.heat_number ILIKE '%'||$3||'%'))
         ORDER BY t.traceability_code`,
-      [isSupplier(p) ? p.supplierId : null, isSupplier(p) || seesUnpublished(p), q],
+      [isSupplier(p) ? p.supplierId : null, true, q],
     );
     return c.json({ records: rows });
   });
@@ -186,65 +173,9 @@ export function traceabilityRoutes() {
     return c.json(await recordDetail(db, p, rec));
   });
 
-  r.post('/traceability', async (c) => {
-    const p = requireRole(c, 'SUPPLIER_CONTRIBUTOR');
-    const { db } = c.get('services');
-    const body = createSchema.parse(await c.req.json());
-    const prod = await visibleProduct(db, p, body.productCode);
-    if (prod.supplier_id !== p.supplierId) throw forbidden();
-    const defs = await loadDefinitions(db);
-    const { clean, errors } = validateAttributes(defs, 'TRACEABILITY', prod.category_code, body.attributes, false);
-    if (errors.length) throw invalid('Some attributes are not valid.', errors);
-    const out = await db.tx(async (tx) => {
-      const rec = (await tx.one<{ id: string; traceability_code: string }>(
-        'INSERT INTO spir.traceability_record (product_id, external_ref) VALUES ($1, $2) RETURNING id, traceability_code',
-        [prod.id, body.externalRef ?? null]))!;
-      const v = await upsertDraft(tx, 'traceability', rec.id, { attributes: clean }, p);
-      await setAssociations(tx, v.id, prod.supplier_id, body);
-      await audit(tx, p, 'CREATE', 'traceability', rec.id, { traceabilityCode: rec.traceability_code, productCode: prod.product_code }, c.get('cid'));
-      return { code: rec.traceability_code, versionNo: v.version_no, status: v.status };
-    });
-    return c.json(out, 201);
-  });
-
-  r.put('/traceability/:code/draft', async (c) => {
-    const p = requireRole(c, 'SUPPLIER_CONTRIBUTOR');
-    const { db } = c.get('services');
-    const body = bodySchema.parse(await c.req.json());
-    const rec = await visibleRecord(db, p, c.req.param('code'));
-    const defs = await loadDefinitions(db);
-    const { clean, errors } = validateAttributes(defs, 'TRACEABILITY', rec.category_code, body.attributes, false);
-    if (errors.length) throw invalid('Some attributes are not valid.', errors);
-    await db.tx(async (tx) => {
-      const v = await upsertDraft(tx, 'traceability', rec.id, { attributes: clean }, p);
-      await setAssociations(tx, v.id, rec.supplier_id, body);
-      if (body.externalRef !== undefined) await tx.query('UPDATE spir.traceability_record SET external_ref = $2 WHERE id = $1', [rec.id, body.externalRef]);
-      await audit(tx, p, 'SAVE_DRAFT', 'traceability', rec.id, { versionNo: v.version_no }, c.get('cid'));
-    });
-    return c.json(await recordDetail(db, p, (await findRecord(db, rec.traceability_code))!));
-  });
-
-  r.post('/traceability/:code/submit', async (c) => {
-    const p = requireRole(c, 'SUPPLIER_CONTRIBUTOR');
-    const { db } = c.get('services');
-    const rec = await visibleRecord(db, p, c.req.param('code'));
-    const defs = await loadDefinitions(db);
-    await db.tx(async (tx) => {
-      const open = await tx.one<VersionRow>(`SELECT * FROM spir.traceability_version WHERE traceability_id = $1 AND status = 'DRAFT'`, [rec.id]);
-      if (open) {
-        const { errors } = validateAttributes(defs, 'TRACEABILITY', rec.category_code, open.attributes, true);
-        const a = await associations(tx, open.id);
-        if (!a.heats.length) errors.push({ field: 'heat_number', message: 'At least one heat number is required.' });
-        if (errors.length) throw invalid('The draft is incomplete.', errors);
-      }
-      await submitDraft(tx, 'traceability', rec.id, p, c.get('cid'));
-    });
-    return c.json(await recordDetail(db, p, rec));
-  });
-
-  // Upload technical evidence onto the open DRAFT (multipart: file, docType, revision?).
+  // Upload a certificate onto the record's live (current) version (multipart: file, docType, revision?).
   r.post('/traceability/:code/documents', async (c) => {
-    const p = requireRole(c, 'SUPPLIER_CONTRIBUTOR');
+    const p = requireSupplierProfile(c);
     const { db, storage, config } = c.get('services');
     const rec = await visibleRecord(db, p, c.req.param('code'));
     const form = await c.req.formData();
@@ -262,8 +193,8 @@ export function traceabilityRoutes() {
       throw new ApiError(415, 'UNSUPPORTED_FILE', 'Only PDF, PNG, JPEG or TXT files whose content matches their extension are accepted.');
     }
     const result = await db.tx(async (tx) => {
-      const draft = await tx.one<VersionRow>(`SELECT * FROM spir.traceability_version WHERE traceability_id = $1 AND status = 'DRAFT'`, [rec.id]);
-      if (!draft) throw new ApiError(409, 'NO_DRAFT', 'Documents can only be added to a DRAFT version. Save a draft first.');
+      const draft = await tx.one<VersionRow>(`SELECT * FROM spir.traceability_version WHERE id = $1`, [rec.current_approved_version_id]);
+      if (!draft) throw new ApiError(409, 'NOT_PUBLISHED', 'Save the shipment before adding documents.');
       const doc = await storeDocument(tx, storage, {
         recordId: rec.id, recordCode: rec.traceability_code, versionId: draft.id, docType, revision,
         fileName: file.name, mediaType: sniffed, bytes, actor: p.userId,
@@ -285,7 +216,6 @@ export function traceabilityRoutes() {
         WHERE d.document_code = $1`, [c.req.param('code')]);
     if (!d) throw notFound('Document');
     await visibleRecord(db, p, d.traceability_code);
-    if (!isSupplier(p) && !seesUnpublished(p) && !['APPROVED', 'SUPERSEDED'].includes(d.version_status)) throw notFound('Document');
     const expiresIn = 300;
     const url = absoluteUrl(c, await storage.signedUrl(d.storage_key, expiresIn, d.file_name));
     await audit(db, p, 'DOWNLOAD_DOCUMENT', 'document', d.id, { documentCode: c.req.param('code'), traceabilityCode: d.traceability_code }, c.get('cid'));

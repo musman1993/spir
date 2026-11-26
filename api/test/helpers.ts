@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from '../src/app.js';
 import type { Services } from '../src/config.js';
 import { readConfig } from '../src/config.js';
-import { createDemoHeaderAuth, createOpenAuth } from '../src/providers/auth.js';
+import { createPortalAuth, type Portal } from '../src/providers/auth.js';
 import { createPGliteDatabase } from '../src/providers/db.js';
 import { createMemoryStorage } from '../src/providers/storage.js';
 import { runMigrations } from '../src/lib/migrate.js';
@@ -12,18 +12,23 @@ import { loadSeed } from '../src/seed/loadSeed.js';
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
-export async function setup(withSeed = true, authMode: 'demo' | 'open' = 'demo') {
+export async function setup(withSeed = true) {
   const db = await createPGliteDatabase();
   await runMigrations(db);
   const config = readConfig({ QR_TOKEN_KEY: Buffer.alloc(32, 7).toString('base64'), ALLOWED_ORIGINS: '*', PUBLIC_APP_URL: 'https://example.test/spir' });
   const storage = createMemoryStorage(config.fileSigningSecret);
-  const services: Services = { db, storage, auth: authMode === 'open' ? createOpenAuth() : createDemoHeaderAuth(db), config };
+  const services: Services = { db, storage, auth: createPortalAuth(db, config.sessionSecret), config };
   const report = withSeed ? await loadSeed(db, storage, config.qrKey, readFileSync(path.join(ROOT, 'seed/spir_seed.csv'), 'utf8')) : null;
   const app = createApp(services);
 
-  async function call(user: string | null, method: string, url: string, body?: unknown) {
+  const tokens = new Map<Portal, string>();
+  /** Call the API as the supplier portal, the company portal, or anonymously (null). */
+  async function call(as: Portal | null, method: string, url: string, body?: unknown) {
     const headers: Record<string, string> = {};
-    if (user) headers['X-SPIR-User'] = user;
+    if (as) {
+      if (!tokens.has(as)) tokens.set(as, (await services.auth.login(as, 'admin', 'admin'))!.token);
+      headers.Authorization = `Bearer ${tokens.get(as)}`;
+    }
     let payload: BodyInit | undefined;
     if (body instanceof FormData) payload = body;
     else if (body !== undefined) { headers['Content-Type'] = 'application/json'; payload = JSON.stringify(body); }

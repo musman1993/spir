@@ -1,11 +1,15 @@
 // Loads product/shipment CSV files into SPIR. Two modes, one set of rules:
 //   seed   - demo data into an empty database (npm run db:seed / dev:memory). Missing certificate
 //            files get a generated "DEMO DOCUMENT" PDF.
-//   import - the CSV upload in the web app, on a database that already has data. New rows create
+//   import - the CSV upload in the supplier portal, on a database that already has data. Every row belongs
+//            to the signed-in supplier (opts.supplier): its supplier_name column is ignored. New rows create
 //            records (and QR codes); a changed row adds a NEW VERSION to the existing record, so its
 //            printed QR label keeps working and shows the latest data. Identical rows are skipped.
 //            Mandatory fields are checked first; nothing is written if any row has an error.
 //            Missing certificate files are skipped (never faked).
+//
+// Everything is published straight away (no approval step for now): approval_status / product_status
+// columns are ignored. A changed row adds a new APPROVED version and the previous one is SUPERSEDED.
 //
 // CSV conventions (one row = one shipment of one part against one PO line):
 //   * Mandatory: supplier_name, part_number, part_description, purchase_order_number, po_line_number,
@@ -40,11 +44,8 @@ const MANDATORY = ['supplier_name', 'part_number', 'part_description', 'purchase
 
 const split = (s: string | undefined) => (s ?? '').split('|').map((x) => x.trim()).filter(Boolean);
 const slug = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
-const status = (s: string | undefined, row: string): Status => {
-  const v = (s || 'APPROVED').trim().toUpperCase() as Status;
-  if (!STATUSES.includes(v)) throw new ImportError([`${row}: status "${s}" must be one of ${STATUSES.join(', ')}`]);
-  return v;
-};
+// Live immediately: every version is published (STATUSES stay for the database's lifecycle).
+const status = (_s: string | undefined, _row: string): Status => 'APPROVED';
 const sameMap = (a: Record<string, string>, b: Record<string, string>) => {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
   return [...keys].every((k) => (a[k] ?? '') === (b[k] ?? ''));
@@ -57,14 +58,6 @@ export class ImportError extends Error {
   }
 }
 
-export const DEMO_COMPANY_USERS = [
-  { id: 'reviewer', name: 'Aisha Rahman', role: 'COMPANY_REVIEWER', email: 'reviewer@spir.example' },
-  { id: 'admin', name: 'Omar Haddad', role: 'REGISTRY_ADMIN', email: 'admin@spir.example' },
-  { id: 'qr-user', name: 'Daniel Mensah', role: 'QR_USER', email: 'qr@spir.example' },
-  { id: 'inspector', name: 'Priya Nair', role: 'INSPECTOR', email: 'inspector@spir.example' },
-  { id: 'auditor', name: 'Lena Fischer', role: 'AUDITOR', email: 'auditor@spir.example' },
-] as const;
-
 export interface SeedReport {
   suppliers: number; products: number; records: number; versions: number; documents: number; qrTokens: number;
   newAttributes: string[];
@@ -72,7 +65,12 @@ export interface SeedReport {
   skippedDocuments: string[];
 }
 export interface SeedFile { name: string; text: string }
-export interface LoadOptions { documentsDir?: string; log?: (m: string) => void; mode?: 'seed' | 'import'; actor?: Principal; correlationId?: string }
+export interface ForcedSupplier { id: string; supplier_code: string; external_ref: string | null; legal_name: string; country_code: string | null }
+export interface LoadOptions {
+  documentsDir?: string; log?: (m: string) => void; mode?: 'seed' | 'import'; actor?: Principal; correlationId?: string;
+  /** Supplier portal: every row belongs to this supplier, whatever the CSV says. */
+  supplier?: ForcedSupplier;
+}
 
 type Row = Record<string, string> & { __file: string; __line: string };
 
@@ -103,6 +101,13 @@ export async function loadSeed(db: Db, storage: FileStorage, qrKey: Buffer, csv:
     throw new ImportError([`The file is not valid CSV: ${e.message}`]);
   }
   if (!rows.length) throw new ImportError(['The CSV has no data rows.']);
+  if (opts.supplier) {
+    for (const r of rows) {
+      r.supplier_name = opts.supplier.legal_name;
+      r.supplier_ref = opts.supplier.external_ref ?? opts.supplier.supplier_code;
+      r.supplier_country = opts.supplier.country_code ?? '';
+    }
+  }
   if (mode === 'import') {
     const problems = checkRows(rows);
     if (problems.length) throw new ImportError(problems);
@@ -136,11 +141,9 @@ export async function loadSeed(db: Db, storage: FileStorage, qrKey: Buffer, csv:
     if (report.newAttributes.length) defs = await loadDefinitions(tx);
     const scopeOf = new Map(defs.filter((d) => (d.comparison_rule.source ?? 'attr') === 'attr').map((d) => [d.attribute_key, d.scope]));
 
-    for (const u of DEMO_COMPANY_USERS) {
-      await tx.query('INSERT INTO spir.app_user (id, display_name, role, email) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING', [u.id, u.name, u.role, u.email]);
-    }
-    const approver = opts.actor?.userId ?? 'reviewer';
-    const actor: Principal = opts.actor ?? { userId: 'reviewer', displayName: 'Aisha Rahman', role: 'COMPANY_REVIEWER', supplierId: null };
+    const actor: Principal = opts.actor ?? { userId: 'company-admin', displayName: 'Company admin', role: 'COMPANY', supplierId: null };
+    const approver = actor.userId;
+    const createdBy = opts.actor?.userId ?? 'supplier-admin';
 
     const touchedRecords = new Set<string>();
 
@@ -156,13 +159,10 @@ export async function loadSeed(db: Db, storage: FileStorage, qrKey: Buffer, csv:
       // ---------- Supplier (found by its key, else created with a contributor login for later) ----------
       let sup = await tx.one<{ id: string; supplier_code: string; legal_name: string }>(
         'SELECT id, supplier_code, legal_name FROM spir.supplier WHERE external_ref = $1', [supplierRef]);
-      const userId = `supplier-${supplierRef.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`.slice(0, 60);
       if (!sup) {
         sup = (await tx.one<{ id: string; supplier_code: string; legal_name: string }>(
           'INSERT INTO spir.supplier (external_ref, legal_name, country_code) VALUES ($1,$2,$3) RETURNING id, supplier_code, legal_name',
           [supplierRef, row.supplier_name, (row.supplier_country || '').toUpperCase().slice(0, 2) || null]))!;
-        await tx.query(`INSERT INTO spir.app_user (id, display_name, role, supplier_id, email) VALUES ($1,$2,'SUPPLIER_CONTRIBUTOR',$3,$4) ON CONFLICT (id) DO NOTHING`,
-          [userId, `${row.supplier_name} contributor`, sup.id, `${userId}@supplier.example`]);
         report.suppliers++;
         log(`supplier ${sup.supplier_code}  ${row.supplier_name}`);
       } else if (sup.legal_name !== row.supplier_name) {
@@ -170,7 +170,6 @@ export async function loadSeed(db: Db, storage: FileStorage, qrKey: Buffer, csv:
         await audit(tx, actor, 'UPDATE_SUPPLIER_NAME', 'supplier', sup.id, { from: sup.legal_name, to: row.supplier_name }, opts.correlationId);
         sup.legal_name = row.supplier_name;
       }
-      const createdBy = (await tx.one('SELECT 1 FROM spir.app_user WHERE id = $1', [userId])) ? userId : approver;
 
       // ---------- Product (supplier + company part number) ----------
       const category = row.category?.trim() || 'VALVE_COMPONENT';
@@ -277,6 +276,11 @@ export async function loadSeed(db: Db, storage: FileStorage, qrKey: Buffer, csv:
     for (const id of touchedRecords) {
       const pub = await tx.one('SELECT current_approved_version_id FROM spir.traceability_record WHERE id = $1', [id]);
       if (pub?.current_approved_version_id && (await ensureActiveToken(tx, qrKey, id, actor, opts.correlationId)).issued) report.qrTokens++;
+    }
+    // Demo seed: the supplier account takes the first supplier, so the supplier portal has data to show.
+    if (mode === 'seed') {
+      await tx.query(`UPDATE spir.app_user SET supplier_id = (SELECT id FROM spir.supplier ORDER BY supplier_code LIMIT 1)
+                       WHERE id = 'supplier-admin' AND supplier_id IS NULL`);
     }
     await audit(tx, opts.actor ?? null, mode === 'import' ? 'CSV_IMPORT' : 'SEED_IMPORT', 'system', null,
       { files: files.map((f) => f.name), rows: rows.length, ...report }, opts.correlationId);

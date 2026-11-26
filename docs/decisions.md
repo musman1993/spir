@@ -39,3 +39,21 @@ Short records of decisions made while building the PoC, mapped to the spec's ADR
 - Accessibility: brand colours too light for small text on white (cyan, green, amber, yellow, grey) colour the dot, border or wash, and a darker shade of the same hue carries the words (for example links are `#00739A`), so text stays at 4.5:1 or better.
 - Type: Figtree for the interface, IBM Plex Mono for identifiers.
 - Printing drops blur and tints so labels and records print on plain white. Browsers without `backdrop-filter` get near-opaque cards.
+
+## Two portals, two accounts (v0.5)
+- **Supplier portal** (`/#/supplier`) and **company portal** (`/#/company`) at separate addresses, each with its own
+  sign-in. Both use `admin` / `admin` for now (fixed, by request). The supplier account (`supplier-admin`) belongs to
+  one supplier, set in its **profile**; the company account (`company-admin`) sees every supplier.
+- Sessions: HMAC-signed tokens (12 hours) sent as `Authorization: Bearer`. The web app keeps one token per portal
+  and picks it from the address, so the two sessions never mix in one browser.
+- **No approval step for now:** a saved shipment (form or CSV) is live at once; a change adds a new version and
+  supersedes the previous one, under the same QR code. Part number, PO and line identify a shipment and can't change
+  in an edit. The form goes through the CSV import engine, so both follow identical rules.
+- **QR scans are open to anyone** (by request): `/qr/:token` and `/qr/:token/documents/:code` need no sign-in, are
+  rate limited per address, and a token only opens its own record's certificates. Label printing, replacement and
+  revocation are supplier-only.
+- The company portal has the scanner, shipment search and the label check (OCR). The audit API stays (company only)
+  without a screen.
+- Removed from the app: role switcher, supplier contributor / reviewer / inspector / QR user / auditor roles, review
+  queue and approval workflow, open mode. Kept on the branch `archive/roles-and-review` for when RBAC returns.
+  Old user rows stay in the database, inactive, because historical versions and audit events point at them.

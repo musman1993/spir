@@ -1,13 +1,14 @@
-// Traceability QR tokens and authenticated resolution (spec 8.7, 11.2, 14.4).
-// The QR carries only an opaque random token. Possession of it grants nothing: every resolution
-// requires an authenticated company user, and only the latest APPROVED data is returned.
+// Traceability QR tokens (spec 8.7, 14.4).
+// The QR carries only an opaque random token. Scanning is open to anyone (no login, by request): the scan
+// shows the record's live data and its certificates, and nothing else. Lookups are rate limited per
+// address. Printing, replacing and revoking labels belong to the supplier portal.
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { AppEnv } from '../app.js';
+import { absoluteUrl, type AppEnv } from '../app.js';
 import type { Db } from '../providers/db.js';
 import type { Principal } from '../providers/auth.js';
-import { isCompany, principal, requireRole } from '../lib/authz.js';
-import { ApiError, conflict, forbidden, invalid, notFound } from '../lib/errors.js';
+import { requireRole } from '../lib/authz.js';
+import { ApiError, conflict, invalid, notFound } from '../lib/errors.js';
 import { audit } from '../lib/audit.js';
 import { decryptToken, encryptToken, newQrToken, sha256Hex } from '../lib/crypto.js';
 import { findRecord, recordDetail, visibleRecord } from './traceability.js';
@@ -35,7 +36,7 @@ export async function ensureActiveToken(db: Db, key: Buffer, recordId: string, a
   return { issued: true };
 }
 
-// Simple per-user sliding window (spec 11.3: rate limiting on QR resolution). Per isolate; fine for a PoC.
+// Simple sliding window per caller address (spec 11.3: rate limiting on QR resolution). Per isolate; fine for a PoC.
 const hits = new Map<string, number[]>();
 function rateLimit(userId: string, limit = 60, windowMs = 60_000) {
   const now = Date.now();
@@ -50,35 +51,57 @@ const reasonSchema = z.object({ reason: z.string().trim().min(3).max(500) });
 export function qrRoutes() {
   const r = new Hono<AppEnv>();
 
-  r.get('/qr/:token', async (c) => {
-    const p = principal(c);
-    if (!isCompany(p)) throw forbidden('QR lookup is for authenticated company users only.');
-    rateLimit(p.userId);
-    const { db } = c.get('services');
-    const token = c.req.param('token');
-    if (!/^[A-Za-z0-9_-]{16,100}$/.test(token)) throw notFound('QR code');
-    const row = await db.one<{ id: string; traceability_id: string; status: string; traceability_code: string; current_approved_version_id: string | null }>(
+  const caller = (c: { req: { header: (n: string) => string | undefined } }) =>
+    (c.req.header('x-forwarded-for')?.split(',')[0] ?? c.req.header('x-real-ip') ?? 'local').trim();
+
+  async function resolve(db: Db, token: string) {
+    if (!/^[A-Za-z0-9_-]{16,100}$/.test(token)) return null;
+    return db.one<{ id: string; traceability_id: string; status: string; traceability_code: string; current_approved_version_id: string | null }>(
       `SELECT q.id, q.traceability_id, q.status, t.traceability_code, t.current_approved_version_id
          FROM spir.qr_token q JOIN spir.traceability_record t ON t.id = q.traceability_id WHERE q.token_hash = $1`, [sha256Hex(token)]);
+  }
+
+  // Public: anyone who scans the label sees the shipment's live data.
+  r.get('/qr/:token', async (c) => {
+    const p = c.get('principal');
+    rateLimit(caller(c));
+    const { db } = c.get('services');
+    const token = c.req.param('token');
+    const row = await resolve(db, token);
     if (!row) {
       await audit(db, p, 'QR_RESOLVE_UNKNOWN', 'qr_token', null, { hint: token.slice(-4) }, c.get('cid'));
       throw notFound('QR code');
     }
     if (row.status !== 'ACTIVE') {
       await audit(db, p, 'QR_RESOLVE_REVOKED', 'qr_token', row.id, {}, c.get('cid'));
-      throw new ApiError(410, 'QR_REVOKED', 'This QR label has been revoked. Ask quality for a replacement label.');
+      throw new ApiError(410, 'QR_REVOKED', 'This QR label has been revoked. Ask the supplier for a replacement label.');
     }
     if (!row.current_approved_version_id) throw notFound('QR code');
     const rec = (await findRecord(db, row.traceability_code))!;
-    // Always the approved, published view - regardless of the caller's review privileges (FR-WF-008).
-    const detail = await recordDetail(db, { ...p, role: 'QR_USER' }, rec);
+    // The live (approved) data only, without version history.
+    const detail = await recordDetail(db, p, rec, true);
     await audit(db, p, 'QR_RESOLVE', 'traceability', row.traceability_id, { traceabilityCode: row.traceability_code }, c.get('cid'));
     return c.json({ ...detail, versions: undefined, resolvedVia: 'QR' });
   });
 
+  // Public certificate download for a scanned label: only documents of that label's own record.
+  r.get('/qr/:token/documents/:doc', async (c) => {
+    rateLimit(caller(c));
+    const { db, storage } = c.get('services');
+    const row = await resolve(db, c.req.param('token'));
+    if (!row || row.status !== 'ACTIVE') throw notFound('QR code');
+    const d = await db.one<{ id: string; storage_key: string; file_name: string }>(
+      'SELECT id, storage_key, file_name FROM spir.document WHERE document_code = $1 AND traceability_id = $2', [c.req.param('doc'), row.traceability_id]);
+    if (!d) throw notFound('Document');
+    const expiresIn = 300;
+    const url = absoluteUrl(c, await storage.signedUrl(d.storage_key, expiresIn, d.file_name));
+    await audit(db, c.get('principal'), 'DOWNLOAD_DOCUMENT_VIA_QR', 'document', d.id, { documentCode: c.req.param('doc'), traceabilityCode: row.traceability_code }, c.get('cid'));
+    return c.json({ url, expiresIn });
+  });
+
   // Authorised label printing: reveals the token so a QR label can be printed.
   r.get('/traceability/:code/qr', async (c) => {
-    const p = requireRole(c, 'COMPANY_REVIEWER', 'REGISTRY_ADMIN');
+    const p = requireRole(c, 'SUPPLIER');
     const { db, config } = c.get('services');
     const rec = await visibleRecord(db, p, c.req.param('code'));
     const row = await db.one<{ token_ciphertext: string; token_hint: string; created_at: string }>(
@@ -96,7 +119,7 @@ export function qrRoutes() {
   });
 
   r.post('/traceability/:code/qr/rotate', async (c) => {
-    const p = requireRole(c, 'COMPANY_REVIEWER', 'REGISTRY_ADMIN');
+    const p = requireRole(c, 'SUPPLIER');
     const { db, config } = c.get('services');
     const { reason } = reasonSchema.parse(await c.req.json());
     const rec = await visibleRecord(db, p, c.req.param('code'));
@@ -106,7 +129,7 @@ export function qrRoutes() {
   });
 
   r.post('/traceability/:code/qr/revoke', async (c) => {
-    const p = requireRole(c, 'COMPANY_REVIEWER', 'REGISTRY_ADMIN');
+    const p = requireRole(c, 'SUPPLIER');
     const { db } = c.get('services');
     const { reason } = reasonSchema.parse(await c.req.json());
     const rec = await visibleRecord(db, p, c.req.param('code'));

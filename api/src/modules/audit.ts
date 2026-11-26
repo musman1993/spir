@@ -6,7 +6,7 @@ import { requireRole } from '../lib/authz.js';
 export function auditRoutes() {
   const r = new Hono<AppEnv>();
   r.get('/audit', async (c) => {
-    requireRole(c, 'AUDITOR', 'REGISTRY_ADMIN', 'COMPANY_REVIEWER');
+    requireRole(c, 'COMPANY');
     const { db } = c.get('services');
     const entityType = c.req.query('entityType') ?? null;
     const code = c.req.query('code') ?? null;   // traceability / product code convenience filter

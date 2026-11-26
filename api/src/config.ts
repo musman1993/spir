@@ -1,6 +1,6 @@
 // Composition root: reads environment variables and wires the providers together.
 import { parseKey } from './lib/crypto.js';
-import { createDemoHeaderAuth, createOpenAuth, type AuthProvider } from './providers/auth.js';
+import { createPortalAuth, type AuthProvider } from './providers/auth.js';
 import { createPgDatabase, type Db } from './providers/db.js';
 import { createLocalDiskStorage, createS3Storage, type FileStorage } from './providers/storage.js';
 
@@ -10,6 +10,7 @@ export interface AppConfig {
   qrKey: Buffer;
   insecureDevKey: boolean;
   fileSigningSecret: string;
+  sessionSecret: string;
   documentMaxBytes: number;
   imageMaxBytes: number;
 }
@@ -30,6 +31,8 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     insecureDevKey,
     // Local-disk file links are signed with a key derived from the QR key (never sent to clients).
     fileSigningSecret: key.toString('base64') + ':files',
+    // Portal sessions are signed with another key derived from the QR key.
+    sessionSecret: key.toString('base64') + ':sessions',
     documentMaxBytes: 15 * 1024 * 1024,
     imageMaxBytes: 12 * 1024 * 1024,
   };
@@ -56,8 +59,6 @@ export async function createServicesFromEnv(env: NodeJS.ProcessEnv = process.env
   if (config.insecureDevKey) console.warn('[config] QR_TOKEN_KEY not set - using an INSECURE development key.');
   const db = await createPgDatabase(env.DATABASE_URL);
   const storage = await createStorageFromEnv(env, config.fileSigningSecret);
-  const mode = env.AUTH_MODE ?? 'open';
-  if (!['open', 'demo'].includes(mode)) throw new Error(`AUTH_MODE=${mode} is not implemented yet; use "open" or "demo".`);
-  const auth = mode === 'demo' ? createDemoHeaderAuth(db) : createOpenAuth();
+  const auth = createPortalAuth(db, config.sessionSecret);
   return { db, storage, auth, config };
 }

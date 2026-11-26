@@ -11,11 +11,11 @@ import { verifyLocal } from './providers/storage.js';
 import { catalogRoutes } from './modules/catalog.js';
 import { productRoutes } from './modules/products.js';
 import { traceabilityRoutes } from './modules/traceability.js';
-import { workflowRoutes } from './modules/workflow.js';
 import { qrRoutes } from './modules/qr.js';
 import { validationRoutes } from './modules/validation.js';
 import { auditRoutes } from './modules/audit.js';
 import { importRoutes } from './modules/importer.js';
+import { portalRoutes } from './modules/portal.js';
 
 export type AppEnv = {
   Variables: {
@@ -33,7 +33,7 @@ export function createApp(services: Services) {
     '*',
     cors({
       origin: (origin) => (allowedOrigins.includes('*') ? origin || '*' : allowedOrigins.includes(origin) ? origin : null),
-      allowHeaders: ['Content-Type', 'X-SPIR-User', 'X-Correlation-Id'],
+      allowHeaders: ['Content-Type', 'Authorization', 'X-Correlation-Id'],
       exposeHeaders: ['X-Correlation-Id', 'Content-Disposition'],
       allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
       maxAge: 600,
@@ -92,7 +92,7 @@ export function createApp(services: Services) {
   v1.route('/', catalogRoutes());
   v1.route('/', productRoutes());
   v1.route('/', traceabilityRoutes());
-  v1.route('/', workflowRoutes());
+  v1.route('/', portalRoutes());
   v1.route('/', qrRoutes());
   v1.route('/', validationRoutes());
   v1.route('/', auditRoutes());

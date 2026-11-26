@@ -1,137 +1,113 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { ROLE_LABEL, type Role } from './api';
-import { useSession } from './session';
-import { Loading, TagMark, useApi } from './ui';
-import { SignIn } from './pages/SignIn';
-import { Home } from './pages/Home';
-import { Products, ProductDetail } from './pages/Products';
+import type { Portal } from './api';
+import { PortalSession, useSession } from './session';
+import { Loading, TagMark } from './ui';
+import { Login } from './pages/Login';
+import { SupplierHome, Profile, ProfileGate } from './pages/Supplier';
+import { ShipmentForm } from './pages/ShipmentForm';
 import { Records, RecordDetail } from './pages/Records';
-import { NewProduct, EditProduct, EditRecord } from './pages/SupplierForms';
-import { ReviewQueue } from './pages/Review';
-import { Scan, QrResult } from './pages/Scan';
+import { Scan, QrResult, PublicScan } from './pages/Scan';
 import { LabelCheck } from './pages/LabelCheck';
 import { ValidationRun, Validations } from './pages/Validation';
-import { Audit } from './pages/Audit';
-import { Settings } from './pages/Settings';
 import { ImportCsv } from './pages/ImportCsv';
 import { QrLabels } from './pages/QrLabels';
 
-type NavItem = { to: string; label: string; roles?: Role[]; count?: number };
-
 export function App() {
+  return (
+    <Routes>
+      {/* Anyone who scans a label: no sign-in. */}
+      <Route path="/t/:token" element={<PublicScan />} />
+      <Route path="/supplier/*" element={<PortalSession portal="supplier"><SupplierPortal /></PortalSession>} />
+      <Route path="/company/*" element={<PortalSession portal="company"><CompanyPortal /></PortalSession>} />
+      <Route path="*" element={<Navigate to="/company" replace />} />
+    </Routes>
+  );
+}
+
+type NavItem = { to: string; label: string; end?: boolean };
+
+function Shell({ portal, nav, children }: { portal: Portal; nav: NavItem[]; children: ReactNode }) {
   const { me, loading, signOut } = useSession();
   const loc = useLocation();
-  const isReviewer = me && ['COMPANY_REVIEWER', 'REGISTRY_ADMIN', 'AUDITOR'].includes(me.role);
-  const [queue] = useApi<{ items: unknown[] }>(isReviewer ? '/review-queue' : null, [loc.pathname]);
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => setMenuOpen(false), [loc.pathname]);
+  useEffect(() => { document.title = portal === 'supplier' ? 'SPIR supplier portal' : 'SPIR company portal'; }, [portal]);
 
   if (loading) return <div className="page"><Loading what="Starting SPIR" /></div>;
-  if (!me) return <SignIn returnTo={loc.pathname} />;
-
-  const supplier = me.role === 'SUPPLIER_CONTRIBUTOR';
-  const open = me.role === 'OPERATOR';
-  const groups: { name: string; items: NavItem[] }[] = open ? [
-    { name: 'QR codes', items: [
-      { to: '/', label: 'Overview' },
-      { to: '/import', label: 'Import CSV' },
-      { to: '/qr-labels', label: 'QR labels' },
-      { to: '/scan', label: 'Scan a QR code' },
-    ] },
-    { name: 'Registry', items: [
-      { to: '/products', label: 'Products' },
-      { to: '/records', label: 'Shipment records' },
-    ] },
-    { name: 'Inspection', items: [
-      { to: '/label-check', label: 'Check a product label' },
-      { to: '/validations', label: 'Label check history' },
-    ] },
-    { name: 'Governance', items: [
-      { to: '/audit', label: 'Audit trail' },
-      { to: '/settings', label: 'Attributes & label profiles' },
-    ] },
-  ] : [
-    { name: 'Registry', items: [
-      { to: '/', label: 'Overview' },
-      { to: '/products', label: supplier ? 'My products' : 'Products' },
-      { to: '/records', label: supplier ? 'My shipment records' : 'Shipment records' },
-      { to: '/review', label: 'Review queue', roles: ['COMPANY_REVIEWER', 'REGISTRY_ADMIN', 'AUDITOR'], count: queue?.items.length },
-    ] },
-    { name: 'Inspection', items: [
-      { to: '/scan', label: 'Scan a QR label', roles: ['QR_USER', 'INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN', 'AUDITOR'] },
-      { to: '/label-check', label: 'Check a product label', roles: ['INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'] },
-      { to: '/validations', label: 'Label check history', roles: ['INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN', 'AUDITOR'] },
-    ] },
-    { name: 'Governance', items: [
-      { to: '/audit', label: 'Audit trail', roles: ['AUDITOR', 'REGISTRY_ADMIN', 'COMPANY_REVIEWER'] },
-      { to: '/settings', label: 'Attributes & label profiles' },
-    ] },
-  ];
+  if (!me) return <Login portal={portal} />;
 
   return (
     <div className="shell">
       <aside className="rail">
-        <NavLink to="/" className="brand" aria-label="SPIR home">
+        <NavLink to={`/${portal}`} className="brand" aria-label="Portal home">
           <TagMark className="brand-mark" />
-          <div><div className="brand-name">SPIR</div><div className="brand-sub">Supplier product information registry</div></div>
+          <div><div className="brand-name">SPIR</div><div className="brand-sub">{portal === 'supplier' ? 'Supplier portal' : 'Company portal'}</div></div>
         </NavLink>
         <button className="btn small menu-toggle" aria-expanded={menuOpen} aria-controls="main-nav" onClick={() => setMenuOpen((o) => !o)}>Menu</button>
         <nav id="main-nav" className={`nav${menuOpen ? ' open' : ''}`} aria-label="Main">
-          {groups.map((g) => {
-            const items = g.items.filter((i) => !i.roles || i.roles.includes(me.role));
-            if (!items.length) return null;
-            return (
-              <div key={g.name} style={{ display: 'contents' }}>
-                <div className="nav-group">{g.name}</div>
-                {items.map((i) => (
-                  <NavLink key={i.to} to={i.to} end={i.to === '/'}>
-                    {i.label}{i.count ? <span className="count">{i.count}</span> : null}
-                  </NavLink>
-                ))}
-              </div>
-            );
-          })}
+          {nav.map((i) => <NavLink key={i.to} to={i.to} end={i.end}>{i.label}</NavLink>)}
         </nav>
-        <div className="rail-foot">{open ? 'Proof of concept. Open mode, no sign-in.' : 'Proof of concept with fictional suppliers and synthetic data.'}</div>
+        <div className="rail-foot">Proof of concept. Both portals use the default sign-in for now.</div>
       </aside>
       <div className="main">
-        {open
-          ? <div className="demo-banner">Open mode: no sign-in. Anyone who can open this app can see and change its data, so keep it on a private address.</div>
-          : <div className="demo-banner">Demo sign-in: anyone can switch roles. Don't enter real supplier or product data.</div>}
-        {!open && (
-          <header className="topbar">
-            <div className="who">
-              <span><strong>{me.displayName}</strong> <span className="who-role">{ROLE_LABEL[me.role]}{me.supplier ? `, ${me.supplier.name}` : ''}</span></span>
-              <button className="btn small" onClick={signOut}>Switch role</button>
-            </div>
-          </header>
-        )}
-        <main className="page" id="main">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/products/new" element={<NewProduct />} />
-            <Route path="/products/:code" element={<ProductDetail />} />
-            <Route path="/products/:code/edit" element={<EditProduct />} />
-            <Route path="/records" element={<Records />} />
-            <Route path="/records/new" element={<EditRecord />} />
-            <Route path="/records/:code" element={<RecordDetail />} />
-            <Route path="/records/:code/edit" element={<EditRecord />} />
-            <Route path="/review" element={<ReviewQueue />} />
-            <Route path="/scan" element={<Scan />} />
-            <Route path="/t/:token" element={<QrResult />} />
-            <Route path="/label-check" element={<LabelCheck />} />
-            <Route path="/validations" element={<Validations />} />
-            <Route path="/validations/:code" element={<ValidationRun />} />
-            <Route path="/audit" element={<Audit />} />
-            <Route path="/import" element={<ImportCsv />} />
-            <Route path="/qr-labels" element={<QrLabels />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
+        <header className="topbar">
+          <div className="who">
+            <span><strong>{me.supplier?.name ?? me.displayName}</strong> <span className="who-role">{portal === 'supplier' ? 'Supplier' : 'Company'}</span></span>
+            <button className="btn small" onClick={signOut}>Sign out</button>
+          </div>
+        </header>
+        <main className="page" id="main">{children}</main>
       </div>
     </div>
+  );
+}
+
+function SupplierPortal() {
+  const nav: NavItem[] = [
+    { to: '/supplier', label: 'Overview', end: true },
+    { to: '/supplier/shipments', label: 'Shipments', end: true },
+    { to: '/supplier/shipments/new', label: 'Add a shipment', end: true },
+    { to: '/supplier/import', label: 'Upload CSV' },
+    { to: '/supplier/qr-labels', label: 'QR labels' },
+    { to: '/supplier/profile', label: 'Profile' },
+  ];
+  return (
+    <Shell portal="supplier" nav={nav}>
+      <Routes>
+        <Route index element={<SupplierHome />} />
+        <Route path="profile" element={<Profile />} />
+        <Route path="shipments" element={<ProfileGate><Records /></ProfileGate>} />
+        <Route path="shipments/new" element={<ProfileGate><ShipmentForm /></ProfileGate>} />
+        <Route path="shipments/:code" element={<RecordDetail />} />
+        <Route path="shipments/:code/edit" element={<ProfileGate><ShipmentForm /></ProfileGate>} />
+        <Route path="import" element={<ProfileGate><ImportCsv /></ProfileGate>} />
+        <Route path="qr-labels" element={<ProfileGate><QrLabels /></ProfileGate>} />
+        <Route path="*" element={<Navigate to="/supplier" replace />} />
+      </Routes>
+    </Shell>
+  );
+}
+
+function CompanyPortal() {
+  const nav: NavItem[] = [
+    { to: '/company', label: 'Scan a QR code', end: true },
+    { to: '/company/shipments', label: 'Search shipments' },
+    { to: '/company/label-check', label: 'Check a product label' },
+    { to: '/company/checks', label: 'Label check history' },
+  ];
+  return (
+    <Shell portal="company" nav={nav}>
+      <Routes>
+        <Route index element={<Scan />} />
+        <Route path="t/:token" element={<QrResult />} />
+        <Route path="shipments" element={<Records />} />
+        <Route path="shipments/:code" element={<RecordDetail />} />
+        <Route path="label-check" element={<LabelCheck />} />
+        <Route path="checks" element={<Validations />} />
+        <Route path="checks/:code" element={<ValidationRun />} />
+        <Route path="*" element={<Navigate to="/company" replace />} />
+      </Routes>
+    </Shell>
   );
 }

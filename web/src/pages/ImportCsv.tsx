@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { API_BASE, api } from '../api';
+import { API_BASE, api, authHeaders } from '../api';
+import { useLinks, useSession } from '../session';
 import { ErrorBox, Id, useAction } from '../ui';
 
 interface Report {
@@ -10,7 +11,6 @@ interface Report {
 }
 
 const COLUMNS: [string, string, boolean][] = [
-  ['supplier_name', 'Supplier legal name, as on its shipping label', true],
   ['part_number', 'Company item number ("Item" / "Part No")', true],
   ['part_description', 'As on the PO. Use quotes if it contains commas', true],
   ['purchase_order_number', '10-digit PO number', true],
@@ -22,7 +22,6 @@ const COLUMNS: [string, string, boolean][] = [
   ['material', 'e.g. ASTM A216 WCB', false],
   ['design_revision', 'e.g. E', false],
   ['country_of_origin', '2-letter code: IN, AE, DE...', false],
-  ['supplier_country', '2-letter code', false],
 ];
 
 export function ImportCsv() {
@@ -31,6 +30,8 @@ export function ImportCsv() {
   const [report, setReport] = useState<Report | null>(null);
   const [drag, setDrag] = useState(false);
   const { busy, error, run, setError } = useAction();
+  const links = useLinks();
+  const { me } = useSession();
 
   const choose = async (f: File | undefined | null) => {
     if (!f) return;
@@ -45,7 +46,7 @@ export function ImportCsv() {
     setReport(await api<Report>('/import', { form }));
   });
   const template = async () => {
-    const res = await fetch(`${API_BASE}/api/v1/import/template`);
+    const res = await fetch(`${API_BASE}/api/v1/import/template`, { headers: authHeaders() });
     const url = URL.createObjectURL(await res.blob());
     const a = document.createElement('a');
     a.href = url; a.download = 'spir-import-template.csv'; a.click();
@@ -56,9 +57,10 @@ export function ImportCsv() {
   return (
     <>
       <div className="page-head">
-        <h1>Import CSV</h1>
-        <p className="lede">One row per shipment: one part against one PO line. SPIR creates a QR code for every new shipment.
-          Importing an updated file later changes the data behind the same QR codes, so printed labels keep working.</p>
+        <h1>Upload CSV</h1>
+        <p className="lede">Add many shipments at once: one row per shipment, one part against one PO line. Every row is saved under
+          {' '}<strong>{me?.supplier?.name}</strong> and gets its own QR code. Upload an updated file later to change the data behind the
+          same QR codes, so printed labels keep working. For one shipment, use <Link to={links.newShipment}>Add a shipment</Link>.</p>
       </div>
       <div className="grid-2">
         <section className="panel stack">
@@ -83,16 +85,16 @@ export function ImportCsv() {
               <strong>Import finished.</strong>
               <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
                 <li>{report.createdRecords.length} new shipment record{report.createdRecords.length === 1 ? '' : 's'}, {report.qrTokens} new QR code{report.qrTokens === 1 ? '' : 's'}</li>
-                <li>{report.updatedRecords.length} updated (same QR code, new version){report.updatedRecords.length ? ': ' : ''}{report.updatedRecords.map((c) => <Link key={c} to={`/records/${c}`} style={{ marginRight: 6 }}><Id>{c}</Id></Link>)}</li>
+                <li>{report.updatedRecords.length} updated (same QR code, new version){report.updatedRecords.length ? ': ' : ''}{report.updatedRecords.map((c) => <Link key={c} to={links.record(c)} style={{ marginRight: 6 }}><Id>{c}</Id></Link>)}</li>
                 <li>{report.unchangedRecords.length} unchanged</li>
-                {report.products > 0 && <li>{report.products} new product{report.products === 1 ? '' : 's'}{report.suppliers ? `, ${report.suppliers} new supplier${report.suppliers === 1 ? '' : 's'}` : ''}</li>}
+                {report.products > 0 && <li>{report.products} new product{report.products === 1 ? '' : 's'}</li>}
                 {report.updatedProducts.length > 0 && <li>{report.updatedProducts.length} product description/details updated</li>}
                 {report.newAttributes.length > 0 && <li>New columns registered as attributes: {report.newAttributes.join(', ')}</li>}
               </ul>
               {report.skippedDocuments.length > 0 && <p className="small" style={{ marginTop: 8 }}>Documents not found and skipped: {report.skippedDocuments.join('; ')}</p>}
               <div className="row" style={{ marginTop: 10 }}>
-                {report.createdRecords.length > 0 && <Link className="btn primary" to={`/qr-labels?codes=${report.createdRecords.join(',')}`}>Print the {report.createdRecords.length} new QR label{report.createdRecords.length === 1 ? '' : 's'}</Link>}
-                <Link className="btn" to="/qr-labels">All QR labels</Link>
+                {report.createdRecords.length > 0 && <Link className="btn primary" to={`${links.qrLabels}?codes=${report.createdRecords.join(',')}`}>Print the {report.createdRecords.length} new QR label{report.createdRecords.length === 1 ? '' : 's'}</Link>}
+                <Link className="btn" to={links.qrLabels}>All QR labels</Link>
               </div>
             </div>
           )}
@@ -105,7 +107,7 @@ export function ImportCsv() {
               <tr key={c}><td><span className="id">{c}</span>{req ? <div className="small" style={{ fontWeight: 600 }}>Mandatory</div> : <div className="small muted">Optional</div>}</td><td className="small">{d}</td></tr>
             ))}</tbody>
           </table>
-          <p className="small muted" style={{ marginTop: 8 }}>A shipment is identified by supplier + part number + PO + line. Change any other value and re-import to update it. Extra columns are kept as additional attributes.</p>
+          <p className="small muted" style={{ marginTop: 8 }}>A shipment is identified by part number + PO + line. A supplier_name column, if your file has one, is ignored: your profile name is used. Change any other value and re-import to update it. Extra columns are kept as additional attributes.</p>
         </section>
       </div>
     </>

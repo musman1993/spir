@@ -23,7 +23,6 @@ export default defineConfig({
         // Public base URL of the web app; printed into QR codes.
         PUBLIC_APP_URL: { value: process.env.PUBLIC_APP_URL ?? "", required: false },
         SPIR_BUCKET: process.env.SPIR_BUCKET ?? "spir",
-        AUTH_MODE: process.env.AUTH_MODE ?? "open",
       },
       dev: { port: 8787 },
     },
