@@ -73,9 +73,9 @@ export const fmtBytes = (n: number) => (n > 1048576 ? `${(n / 1048576).toFixed(1
 export function TagMark({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 30 36" aria-hidden>
-      <path d="M9 1h20v34H9L1 27V9z" fill="#E9D9A6" stroke="#cbb67a" strokeWidth="1.5" />
-      <circle cx="9" cy="18" r="3.2" fill="#22272b" />
-      <path d="M14 10h11M14 15h8M14 21h11M14 26h6" stroke="#6b6143" strokeWidth="1.6" strokeLinecap="round" />
+      <path d="M9 1h20v34H9L1 27V9z" fill="#FFF4E6" stroke="#F79428" strokeWidth="1.5" />
+      <circle cx="9" cy="18" r="3.2" fill="#004B8D" />
+      <path d="M14 10h11M14 15h8M14 21h11M14 26h6" stroke="#004B8D" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }

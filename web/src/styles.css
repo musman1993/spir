@@ -1,38 +1,54 @@
-/* SPIR visual system
-   Surfaces: cool mill-scale greys. Ink: graphite. Action: marking-paint cobalt.
-   Signal colours (accept / hold / review) carry meaning only and never decorate.
-   Manila is reserved for the traceability hang tag - the one memorable element. */
+/* SPIR visual system: cozy glass
+   A grounded deep-blue glass rail over a warm mist canvas with faint amber and sky-cyan washes.
+   Content sits on frosted white cards. Brand blue #004B8D carries primary actions and headers;
+   cyan #00A4D2 marks links, active borders and QR indicators. Status colours carry meaning only.
+   Where a brand colour is too light for small text on white, a darker shade of the same hue is used
+   for the words and the brand colour for the dot, border or wash. */
 :root {
-  --ink: #22272b;
-  --ink-2: #4a545c;
-  --ink-3: #6f7a83;
-  --surface: #eef1f3;
+  --ink: #13293D;
+  --ink-2: #3E5266;
+  --ink-3: #5A6C7E;
+  --surface: #F4F6F9;
   --panel: #ffffff;
-  --line: #d3d9de;
-  --line-2: #b9c2c9;
-  --cobalt: #1f4fa3;
-  --cobalt-ink: #163a7a;
-  --cobalt-wash: #e7eefb;
-  --accept: #1f7a4d;
-  --accept-wash: #e3f2ea;
-  --hold: #b3261e;
-  --hold-wash: #fbe9e7;
-  --review: #9a6412;
-  --review-wash: #fbf0dc;
-  --neutral-wash: #eceff2;
-  --manila: #e9d9a6;
-  --manila-edge: #cbb67a;
-  --font: 'Archivo', system-ui, sans-serif;
+  --glass: rgba(255, 255, 255, .78);
+  --glass-strong: rgba(255, 255, 255, .9);
+  --glass-line: rgba(0, 164, 210, .22);
+  --glass-shadow: 0 10px 30px -18px rgba(0, 75, 141, .35);
+  --line: #D3E4EC;
+  --line-2: #AFCBD8;
+  --cobalt: #004B8D;          /* brand blue: primary buttons, table and card headers */
+  --cobalt-ink: #003A6E;
+  --cobalt-wash: #E4F5FB;
+  --cyan: #00A4D2;            /* active borders, focus, QR indicators */
+  --link: #00739A;            /* cyan family, dark enough for text on white */
+  --accept: #00AA7E;          /* APPROVED */
+  --accept-2: #62BB46;
+  --accept-ink: #006B50;
+  --accept-wash: #E0F5EE;
+  --hold: #D31245;            /* REJECTED / errors */
+  --hold-ink: #B00E39;
+  --hold-wash: #FCE8ED;
+  --review: #F79428;          /* PENDING */
+  --review-ink: #8A4B05;      /* warm secondary callouts */
+  --review-wash: #FEF1E2;
+  --draft: #FFCF22;           /* DRAFT */
+  --draft-ink: #6B4A00;
+  --draft-wash: #FFF6D2;
+  --history: #959797;         /* SUPERSEDED / historical */
+  --history-ink: #5C5E5E;
+  --neutral-wash: #EDF2F6;
+  --manila: #FFF1DF;          /* the hang tag: warm amber paper */
+  --manila-edge: #EDB777;
+  --font: 'Figtree', system-ui, sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, monospace;
-  --r-s: 3px;
-  --r-m: 6px;
-  --rail: 232px;
+  --r-s: 10px;
+  --r-m: 18px;
+  --rail: 248px;
   font-family: var(--font);
   font-size: 15px;
   line-height: 1.5;
   color: var(--ink);
   background: var(--surface);
-  font-variation-settings: 'wdth' 100;
 }
 * { box-sizing: border-box; }
 body { margin: 0; }
@@ -308,3 +324,144 @@ input.mono, textarea.mono { font-family: var(--mono); }
 .print-label img { width: 190px; height: 190px; }
 .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line-2); border-top-color: var(--cobalt); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ------------------------------------------------------------------
+   Glass layer: applied over the base rules above.
+   ------------------------------------------------------------------ */
+body {
+  background:
+    radial-gradient(900px 560px at 92% -8%, rgba(247, 148, 40, .08), transparent 70%),
+    radial-gradient(860px 640px at 12% 108%, rgba(135, 229, 255, .12), transparent 70%),
+    var(--surface);
+  background-attachment: fixed;
+}
+a { color: var(--link); }
+a:hover { color: var(--cobalt); }
+:focus-visible { outline-color: var(--cyan); }
+h1 { color: #0B2A4A; font-weight: 800; }
+h2, h3 { color: #0B2A4A; font-weight: 700; }
+
+/* Rail: deep-blue glass */
+.rail { background: rgba(0, 75, 141, .92); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-right: 1px solid rgba(135, 229, 255, .25); padding: 22px 14px; }
+.brand-sub { color: #A9CBE6; }
+.nav-group { color: #A9CBE6; }
+.nav a { color: #DCEBF7; border-radius: 12px; padding: 9px 12px; min-height: 40px; }
+.nav a:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.nav a.active { background: rgba(255, 255, 255, .16); color: #fff; box-shadow: inset 3px 0 0 #87E5FF; }
+.nav .count { background: var(--review); color: #3B2003; font-weight: 700; }
+.rail-foot { color: #CFE3F3; background: rgba(255, 255, 255, .08); border-radius: 14px; padding: 12px; }
+.menu-toggle { border-color: rgba(255, 255, 255, .4) !important; }
+.topbar { background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--glass-line); }
+.demo-banner { background: rgba(247, 148, 40, .12); color: var(--review-ink); border-bottom: 1px solid rgba(247, 148, 40, .3); }
+
+/* Frosted cards */
+.panel, .table-wrap, .stat, .empty, .verdict, .persona, .qr-label, .sheet-opt, .dropzone {
+  background: var(--glass);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-m);
+  box-shadow: var(--glass-shadow);
+}
+.panel { padding: 20px 22px; }
+.panel > h2:first-child { color: var(--cobalt); }
+.empty { border-style: dashed; border-color: rgba(0, 164, 210, .4); }
+.stat:hover, .persona:hover { border-color: var(--cyan); }
+.dropzone.over { border-color: var(--cyan); background: rgba(228, 245, 251, .9); }
+.qr-label.unselected { opacity: .55; }
+.sheet-opt.on { border-color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan), var(--glass-shadow); color: var(--cobalt); }
+
+/* Tables: brand-blue header row */
+.table-wrap { overflow: hidden; overflow-x: auto; }
+.table th { background: var(--cobalt); color: #fff; border-bottom: 0; font-weight: 700; }
+.table-wrap .table th:first-child { border-top-left-radius: 0; }
+.table td { border-bottom: 1px solid rgba(0, 164, 210, .14); }
+.table tbody tr:hover { background: rgba(0, 164, 210, .06); }
+.panel .table th { padding-top: 10px; padding-bottom: 10px; }
+
+/* Buttons and inputs */
+.btn { border-radius: var(--r-s); border-color: rgba(0, 164, 210, .35); background: var(--glass-strong); min-height: 40px; padding: 8px 16px; }
+.btn:hover { border-color: var(--cyan); }
+.btn.small { min-height: 32px; padding: 4px 11px; border-radius: 8px; }
+.btn.primary { background: var(--cobalt); border-color: var(--cobalt); color: #fff; }
+.btn.primary:hover { background: var(--cobalt-ink); border-color: var(--cobalt-ink); }
+.btn.accept { background: var(--accept-ink); border-color: var(--accept-ink); }
+.btn.hold { background: var(--glass-strong); border-color: rgba(211, 18, 69, .5); color: var(--hold-ink); }
+.btn.hold:hover { background: var(--hold-wash); }
+input, select, textarea { border-radius: var(--r-s); border-color: rgba(0, 164, 210, .35); background: rgba(255, 255, 255, .92); }
+input:focus, select:focus, textarea:focus { border-color: var(--cyan); outline: 3px solid rgba(0, 164, 210, .18); }
+.field-error { color: var(--hold-ink); }
+
+/* Status chips */
+.chip { border-radius: 999px; padding: 2px 10px 2px 8px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+.chip::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.chip.APPROVED { background: var(--accept-wash); color: var(--accept-ink); }
+.chip.APPROVED::before { background: var(--accept); box-shadow: 0 0 0 2px rgba(98, 187, 70, .35); }
+.chip.PENDING { background: var(--review-wash); color: var(--review-ink); }
+.chip.PENDING::before { background: var(--review); }
+.chip.DRAFT { background: var(--draft-wash); color: var(--draft-ink); border-color: transparent; }
+.chip.DRAFT::before { background: var(--draft); box-shadow: 0 0 0 1px #C9A000; }
+.chip.REJECTED { background: var(--hold-wash); color: var(--hold-ink); }
+.chip.REJECTED::before { background: var(--hold); }
+.chip.SUPERSEDED, .chip.WITHDRAWN, .chip.REVOKED { background: rgba(149, 151, 151, .14); color: var(--history-ink); border-color: transparent; }
+.chip.SUPERSEDED::before, .chip.WITHDRAWN::before, .chip.REVOKED::before { background: var(--history); }
+
+/* Validation stamps */
+.stamp { border-radius: 8px; }
+.stamp.MATCH, .stamp.PASS { color: var(--accept-ink); }
+.stamp.MISMATCH, .stamp.FAIL { color: var(--hold-ink); }
+.stamp.LOW_CONFIDENCE, .stamp.REVIEW_REQUIRED, .stamp.UNREADABLE, .stamp.MISSING_ON_LABEL, .stamp.NEEDS_REVIEW, .stamp.PASS_WITH_WARNINGS { color: var(--review-ink); }
+.stamp.MISSING_IN_REGISTRY, .stamp.NOT_APPLICABLE, .stamp.NOT_CHECKED, .stamp.UNRESOLVED, .stamp.PENDING_SYNCHRONIZATION { color: var(--history-ink); }
+.verdict.FAIL { border-color: rgba(211, 18, 69, .45); background: rgba(252, 232, 237, .85); }
+.verdict.PASS { border-color: rgba(0, 170, 126, .45); background: rgba(224, 245, 238, .85); }
+.verdict.NEEDS_REVIEW, .verdict.PASS_WITH_WARNINGS { border-color: rgba(247, 148, 40, .45); background: rgba(254, 241, 226, .88); }
+.check.ok { color: var(--accept-ink); }
+.check.bad { color: var(--hold-ink); }
+.conf.low { color: var(--hold-ink); }
+
+/* Messages */
+.notice { border: 1px solid rgba(0, 164, 210, .3); border-left-width: 1px; background: rgba(228, 245, 251, .85); border-radius: 12px; color: #0B3B5C; }
+.notice.error { border-color: rgba(211, 18, 69, .4); background: rgba(252, 232, 237, .9); color: #7A0A28; }
+.notice.warn { border-color: rgba(247, 148, 40, .45); background: rgba(254, 241, 226, .9); color: #5E3303; }
+.notice.ok { border-color: rgba(0, 170, 126, .4); background: rgba(224, 245, 238, .9); color: #0D4D3A; }
+
+/* Timeline, diff, progress */
+.timeline li { border-left-color: rgba(0, 164, 210, .25); }
+.timeline li::before { background: var(--history); }
+.timeline li.APPROVED::before { background: var(--accept); }
+.timeline li.PENDING::before { background: var(--review); }
+.timeline li.REJECTED::before { background: var(--hold); }
+.timeline li.DRAFT::before { background: var(--draft); }
+.diff td.from { color: var(--history-ink); text-decoration-color: rgba(149, 151, 151, .6); }
+.diff td.to { color: #0B2A4A; background: rgba(255, 207, 34, .18); font-weight: 600; }
+.progress { background: rgba(0, 164, 210, .15); }
+.progress > div, .spin { border-top-color: var(--cyan); }
+.progress > div { background: var(--cyan); }
+.capture-stage { background: radial-gradient(circle at 50% 45%, #2D4258, #0E1C2B); }
+.capture-stage .guide { border: 3px solid #87E5FF; border-radius: 14px; box-shadow: 0 0 18px rgba(135, 229, 255, .35); }
+.crop-sel { outline-color: #87E5FF; }
+.evidence .box { outline-color: var(--cyan); }
+.ocr-text { background: rgba(255, 255, 255, .85); border-color: var(--glass-line); border-radius: 12px; }
+
+/* Hang tag: warm amber paper on the glass */
+.tag { color: #3A2610; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .5), var(--glass-shadow); }
+.tag::before { box-shadow: inset 0 0 0 2px var(--manila-edge), 0 0 0 4px #F5C792; }
+.tag .facts dt { color: #7A5326; }
+.tag-heats span { border-color: #D39A57; background: rgba(255, 255, 255, .6); }
+
+/* Glass blur does not print; print on plain white */
+@media print {
+  body { background: #fff; }
+  .panel, .table-wrap, .stat, .empty, .verdict, .qr-label, .notice, .topbar { background: #fff !important; backdrop-filter: none !important; box-shadow: none !important; }
+  .table th { background: #fff; color: #000; border-bottom: 2px solid #000; }
+}
+/* Older browsers without backdrop-filter get a more opaque card */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .panel, .table-wrap, .stat, .empty, .verdict, .persona, .qr-label, .sheet-opt, .dropzone, .topbar { background: rgba(255, 255, 255, .95); }
+  .rail { background: #004B8D; }
+}
+
+/* Fixes */
+.btn.menu-toggle { display: none; background: transparent; color: #fff; }
+@media (max-width: 860px) { .btn.menu-toggle { display: inline-flex; } }
+.steps > li.panel { margin-top: 0; }
+.steps li::before { background: var(--cobalt); }

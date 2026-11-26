@@ -32,3 +32,10 @@ Short records of decisions made while building the PoC, mapped to the spec's ADR
 - **Border:** 2 modules inside the image, plus the label's white padding, for at least 4 in total.
 - **Test (Codespace-length links, 32 mm code, blurred, noisy, tilted capture, zxing-cpp):** with 150 px across the code, the old codes decoded 13/20 and the new codes with the logo 20/20. 8-per-sheet labels (54 mm code) decoded in every condition tested.
 - **Sheets:** A4 8/14/21 per sheet, laid out in real millimetres using `@page sheet { size: A4; margin: 0 }`, with a start position and a printer offset.
+
+## Cozy glass visual system (v0.4)
+- Approved from the design mockups: a deep-blue glass rail (`rgba(0,75,141,.92)`, blur 18px) over a warm mist canvas (`#F4F6F9`) with faint amber (`#F79428` at 8%) and sky-cyan (`#87E5FF` at 12%) washes. Cards, tables and panels are frosted white (`rgba(255,255,255,.78)`, blur 14px, `1px solid rgba(0,164,210,.22)`, 18px radius).
+- Tokens: `#004B8D` for primary buttons and table/card headers; `#00A4D2` for active borders, focus and QR indicators; APPROVED `#00AA7E`/`#62BB46`; PENDING `#F79428`; DRAFT `#FFCF22`; warm callouts `#8A4B05`; REJECTED/errors `#D31245`; historical/superseded `#959797`.
+- Accessibility: brand colours too light for small text on white (cyan, green, amber, yellow, grey) colour the dot, border or wash, and a darker shade of the same hue carries the words (for example links are `#00739A`), so text stays at 4.5:1 or better.
+- Type: Figtree for the interface, IBM Plex Mono for identifiers.
+- Printing drops blur and tints so labels and records print on plain white. Browsers without `backdrop-filter` get near-opaque cards.
