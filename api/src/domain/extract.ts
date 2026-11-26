@@ -81,9 +81,9 @@ function locate(line: OcrLine, value: string): { confidence: number | null; bbox
 /** Accepts "https://host/#/t/<token>", "spir:<token>" or a bare 43-char base64url token. */
 export function parseSpirQr(text: string): string | null {
   const t = text.trim();
-  const m = t.match(/\/t\/([A-Za-z0-9_-]{32,})\/?$/) ?? t.match(/^spir:([A-Za-z0-9_-]{32,})$/i);
+  const m = t.match(/\/t\/([A-Za-z0-9_-]{16,})\/?$/) ?? t.match(/^spir:([A-Za-z0-9_-]{16,})$/i);
   if (m) return m[1];
-  return /^[A-Za-z0-9_-]{43}$/.test(t) ? t : null;
+  return /^[0-9A-HJKMNP-TV-Z]{16}$/.test(t) || /^[A-Za-z0-9_-]{43}$/.test(t) ? t : null;
 }
 
 export function linesFrom(ocr: OcrInput): OcrLine[] {

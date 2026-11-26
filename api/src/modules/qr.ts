@@ -56,7 +56,7 @@ export function qrRoutes() {
     rateLimit(p.userId);
     const { db } = c.get('services');
     const token = c.req.param('token');
-    if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) throw notFound('QR code');
+    if (!/^[A-Za-z0-9_-]{16,100}$/.test(token)) throw notFound('QR code');
     const row = await db.one<{ id: string; traceability_id: string; status: string; traceability_code: string; current_approved_version_id: string | null }>(
       `SELECT q.id, q.traceability_id, q.status, t.traceability_code, t.current_approved_version_id
          FROM spir.qr_token q JOIN spir.traceability_record t ON t.id = q.traceability_id WHERE q.token_hash = $1`, [sha256Hex(token)]);

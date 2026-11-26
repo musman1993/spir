@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import QRCode from 'qrcode';
+import { loadBrandLogo } from '../qr/brand';
+import { renderQr, svgDataUrl } from '../qr/render';
 import { Link, useParams } from 'react-router-dom';
 import { api, qrLinkFor } from '../api';
 import { useSession } from '../session';
@@ -79,8 +80,8 @@ function QrPanel({ rec, onChange }: { rec: any; onChange: () => void }) {
 
   const show = () => run(async () => {
     const r = await api<{ token: string }>(`/traceability/${rec.code}/qr`);
-    const img = await QRCode.toDataURL(qrLinkFor(r.token), { errorCorrectionLevel: 'M', margin: 1, width: 300 });
-    setLabel({ token: r.token, img });
+    const art = await renderQr(qrLinkFor(r.token), await loadBrandLogo(), 4);
+    setLabel({ token: r.token, img: svgDataUrl(art.svg) });
   });
   const act = () => run(async () => {
     await api(`/traceability/${rec.code}/qr/${modal}`, { body: { reason } });

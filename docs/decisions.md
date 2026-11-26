@@ -23,3 +23,12 @@ Short records of decisions made while building the PoC, mapped to the spec's ADR
 | new | Real samples live in git-ignored `seed/local/` and `api/test/fixtures/local/` | Real POs/part numbers/supplier names must not enter a public repo | - |
 | new | Open mode (`AUTH_MODE=open`, default): no sign-in, one generic `operator` who may do everything. Role code kept, switched off | User: "kill all the actors" until the supplier module exists | Before any shared or public deployment: SSO |
 | new | CSV import in the app: all-or-nothing with per-row errors; a changed row = new approved version of the same record; QR tokens never replaced by an import | Printed labels must stay valid while data is corrected | Supplier module takes over data entry |
+
+## QR labels for phone cameras (v0.3)
+- **Problem:** phone cameras didn't detect the codes. Causes found: small images scaled down with `image-rendering: pixelated`, a 1-module border, and long links (Codespace address + 43-character token).
+- **Tokens:** now 16 characters of Crockford base32 (80 random bits). Only the SHA-256 is stored, and lookups are rate limited. Old 43-character tokens still resolve.
+- **Error correction:** the strongest level (H, Q, then M) that doesn't make the code bigger than M would. Bigger squares help a phone more than spare correction does.
+- **Logo:** sits in a cut-out in the middle that lines up with the grid, at 20% of the width or less (about 4% of the area). Every code is decoded with ZXing right after it's drawn; if that fails, the logo is shrunk, then dropped.
+- **Border:** 2 modules inside the image, plus the label's white padding, for at least 4 in total.
+- **Test (Codespace-length links, 32 mm code, blurred, noisy, tilted capture, zxing-cpp):** with 150 px across the code, the old codes decoded 13/20 and the new codes with the logo 20/20. 8-per-sheet labels (54 mm code) decoded in every condition tested.
+- **Sheets:** A4 8/14/21 per sheet, laid out in real millimetres using `@page sheet { size: A4; margin: 0 }`, with a start position and a printer offset.

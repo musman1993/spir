@@ -19,7 +19,7 @@ and approval workflow are still in the code, switched off, ready to become the s
 
 1. **Import CSV:** one row per shipment (part number, PO + line, quantity, heats, pattern number, supplier...).
    SPIR creates a shipment record and **a QR code for each new row**.
-2. **QR labels:** print them as a sheet, download PNGs for a label printer, or export the links as CSV.
+2. **QR labels:** print them on A4 sticker sheets (8, 14 or 21 per sheet), download 300 dpi PNGs, or export the links as CSV.
 3. **Scan a QR code** with a phone camera, webcam or handheld scanner to see the shipment's details and certificates.
 
 **Updating:** change the CSV and import it again. A changed row adds a new version to the same record, and **its
@@ -103,6 +103,23 @@ Open the **Ports** tab and click the globe icon next to port **5173**. Go to **I
 
    Optional, for automatic API deploys on every push: connect the repo in Neon console > **Integrations > GitHub**
    (this creates `NEON_API_KEY`), then add the secrets/variables listed at the top of `.github/workflows/deploy-api.yml`.
+
+## Printing QR labels
+
+**Company logo.** Put the logo in `web/public/brand/` as `logo.png`, ideally square with a white or transparent background. `logo.svg` also works, and PNG wins if both are there. Until you add one, a placeholder mark is used. Then reload the QR labels page.
+
+**Sheets.** Choose 8 per sheet (99.1 × 67.7 mm, e.g. Avery L7165), 14 per sheet (99.1 × 38.1 mm, L7163) or 21 per sheet (63.5 × 38.1 mm, L7160). **Start at label** lets you finish a part-used sheet. In the print dialog, choose A4, scale 100% (Actual size) and margins None. If your printer shifts things, use **Printer alignment**: print one page on plain paper with outlines turned on, hold it against a sticker sheet, and nudge the labels by millimetres. The setting is saved in that browser.
+
+**Each label shows** the QR code, Part #, PO # with the line, and Heat #, plus the record number in small type.
+
+**Why the codes scan reliably:**
+- **Short links.** Each code holds only a 16-character token, plus the app's web address.
+- **The strongest error correction that doesn't add squares.** The logo sits in a cut-out in the middle that lines up with the grid.
+- **A white border** of at least 4 modules, made up of 2 inside the image plus the label's padding.
+- **Sharp vector printing.**
+- **A check on every code.** Each one is decoded again in the browser right after it's drawn. If the logo ever gets in the way, it's made smaller or left out, and the page tells you.
+
+**The web address matters.** It's the biggest factor in how dense the code is. A Codespace address is long (80 characters inside each code), it needs a GitHub sign-in on the phone, and it disappears with the Codespace. Before printing labels for real parts, set `PUBLIC_APP_URL` to the permanent address. With GitHub Pages, the codes have 37 squares per side instead of 45. Tokens issued before this change were 43 characters long, and they still work.
 
 ## Editing the demo data
 

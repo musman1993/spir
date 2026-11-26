@@ -5,7 +5,21 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 export const sha256Hex = (data: Uint8Array | string) => createHash('sha256').update(data).digest('hex');
 
 /** 256-bit random token, base64url (43 chars). Encodes no business data. */
-export const newQrToken = () => randomBytes(32).toString('base64url');
+/**
+ * QR token: 16 characters of Crockford base32 (80 random bits). Short enough that the QR stays coarse and
+ * easy for a phone camera, still unguessable (lookups are rate limited and only the SHA-256 is stored).
+ * Older 43-character base64url tokens remain valid.
+ */
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+export const newQrToken = () => {
+  const b = randomBytes(10);
+  let bits = 0; let acc = 0; let out = '';
+  for (const byte of b) {
+    acc = (acc << 8) | byte; bits += 8;
+    while (bits >= 5) { out += B32[(acc >> (bits - 5)) & 31]; bits -= 5; }
+  }
+  return out;
+};
 
 export function encryptToken(key: Buffer, token: string): string {
   const iv = randomBytes(12);

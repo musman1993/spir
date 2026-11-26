@@ -34,7 +34,7 @@ describe('import CSV -> QR labels -> scan', () => {
     expect(labels).toHaveLength(2);
     const a = labels.find((l: any) => l.partNumber === '1V9990001');
     expect(a).toMatchObject({ purchaseOrder: '7700200001', poLine: '4', quantity: '2', heats: ['HV-1001'], patternNumber: 'HP-17', supplier: 'Harbour Valve Works Private Limited' });
-    expect(a.token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(a.token).toMatch(/^[0-9A-HJKMNP-TV-Z]{16}$/);
     expect(a.url).toBe(`https://example.test/spir/#/t/${a.token}`);
     tokenA = a.token; codeA = a.code;
   });
