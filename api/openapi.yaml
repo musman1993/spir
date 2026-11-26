@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: SPIR internal API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     Company application interface for the Supplier Product Information Registry (spec section 11).
     This is NOT an X12 endpoint. Supplier EDI (832/841) arrives through a separate adapter (planned).
@@ -49,7 +49,7 @@ components:
       type: object
       properties:
         code: { type: string, examples: [DOC-000001] }
-        type: { type: string, enum: [MTC, COC, INSPECTION_REPORT, DRAWING, OTHER] }
+        type: { type: string, enum: [MTC, COC, RT_REPORT, INSPECTION_REPORT, DRAWING, OTHER] }
         revision: { type: string }
         fileName: { type: string }
         sizeBytes: { type: integer }
@@ -108,7 +108,7 @@ paths:
     get: { summary: List products (suppliers see own; QR users see approved only), parameters: [{ name: q, in: query, schema: { type: string } }], responses: { '200': { description: OK } } }
     post:
       summary: Supplier registers a product (creates Product ID + DRAFT v1)
-      requestBody: { content: { application/json: { schema: { type: object, required: [categoryCode, productName, supplierPartNumber], properties: { categoryCode: { type: string }, productName: { type: string }, description: { type: string }, supplierPartNumber: { type: string }, manufacturerPartNumber: { type: string }, attributes: { type: object } } } } } }
+      requestBody: { content: { application/json: { schema: { type: object, required: [categoryCode, productName, partNumber], properties: { categoryCode: { type: string, examples: [VALVE_COMPONENT] }, productName: { type: string, description: Part description }, partNumber: { type: string, description: Company item number }, supplierPartNumber: { type: string }, attributes: { type: object, description: 'design_revision, material' } } } } } }
       responses: { '201': { description: Created }, '409': { $ref: '#/components/responses/Err' }, '422': { $ref: '#/components/responses/Err' } }
   /api/v1/products/{code}:
     get: { summary: Product detail with versions and records, parameters: [{ name: code, in: path, required: true, schema: { type: string } }], responses: { '200': { description: OK }, '404': { $ref: '#/components/responses/Err' } } }
@@ -119,7 +119,7 @@ paths:
   /api/v1/traceability:
     get: { summary: List traceability records, parameters: [{ name: q, in: query, schema: { type: string } }], responses: { '200': { description: OK } } }
     post:
-      summary: Supplier creates a traceability record (DRAFT v1)
+      summary: Supplier creates a shipment record (DRAFT v1). Submit requires heats + attributes purchase_order_number, po_line_number, quantity, pattern_number
       requestBody: { content: { application/json: { schema: { type: object, required: [productCode], properties: { productCode: { type: string }, externalRef: { type: string }, heats: { type: array, items: { type: string } }, batches: { type: array, items: { type: string } }, serials: { type: array, items: { type: string } }, attributes: { type: object } } } } } }
       responses: { '201': { description: Created } }
   /api/v1/traceability/{code}:

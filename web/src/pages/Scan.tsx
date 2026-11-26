@@ -120,7 +120,7 @@ export function QrResult() {
         </div>
         <div className="stack">
           <section className="panel"><h2>Product</h2><AttributeList defs={defs} scope="PRODUCT" values={rec.product.attributes ?? {}} /></section>
-          <section className="panel"><h2>Manufacturing</h2><AttributeList defs={defs} scope="TRACEABILITY" values={v.attributes} /></section>
+          <section className="panel"><h2>Shipment</h2><AttributeList defs={defs} scope="TRACEABILITY" values={v.attributes} /></section>
           <section className="panel small"><dl className="facts"><dt>Record</dt><dd><Id>{rec.code}</Id></dd><dt>Supplier</dt><dd>{rec.supplier.name} <Id>{rec.supplier.code}</Id></dd></dl></section>
         </div>
       </div>

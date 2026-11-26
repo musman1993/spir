@@ -22,7 +22,7 @@ export function Settings() {
             <tbody>{defs.map((d) => (
               <tr key={d.key}>
                 <td>{d.label}<div className="small muted id">{d.key} v{d.version}</div></td>
-                <td>{d.scope === 'PRODUCT' ? 'Product' : 'Manufacturing record'}</td>
+                <td>{d.scope === 'PRODUCT' ? 'Product' : 'Shipment record'}</td>
                 <td className="small">{d.dataType.toLowerCase()}{d.unit ? `, ${d.unit}` : ''}{d.allowedValues ? <div className="muted">{d.allowedValues.join(', ')}</div> : null}</td>
                 <td>{d.required ? 'Yes' : ''}</td>
                 <td className="small">{d.labelChecked ? (d.critical ? 'Critical' : 'Checked') : ''}</td>

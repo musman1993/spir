@@ -19,6 +19,8 @@ export interface CameraAdapter {
 export interface BarcodeAdapter {
   readonly name: string;
   decodeImage(img: HTMLImageElement | HTMLCanvasElement): Promise<BarcodeRead[]>;
+  /** Every distinct barcode in the image (whole image + overlapping strips). */
+  decodeAll(canvas: HTMLCanvasElement): Promise<BarcodeRead[]>;
   startLive(video: HTMLVideoElement, onRead: (r: BarcodeRead) => void, deviceId?: string): Promise<() => void>;
 }
 

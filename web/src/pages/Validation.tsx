@@ -17,11 +17,12 @@ const pct = (c: number | null) => (c == null ? 'n/a' : `${Math.round(c * 100)}%`
 function Evidence({ run, focus }: { run: any; focus: any | null }) {
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   if (!run.image) return <p className="muted small">No photo was stored for this check.</p>;
-  // Boxes come from the OCR input image, which was scaled to max 2400px and possibly rotated.
+  // Boxes come from the OCR input: the photo cropped, scaled by pre.scale (and possibly rotated).
   const pre = run.device?.preprocessing;
-  const box = focus?.bbox && dims && (!pre || pre.rotate === 0) ? (() => {
-    const s = Math.min(1, 2400 / Math.max(dims.w, dims.h));
-    return { left: `${(focus.bbox.x0 / s / dims.w) * 100}%`, top: `${(focus.bbox.y0 / s / dims.h) * 100}%`,
+  const box = focus?.bbox && dims && (!pre || !pre.rotate) ? (() => {
+    const s = pre?.scale ?? Math.min(1, 2400 / Math.max(dims.w, dims.h));
+    const cx = pre?.crop?.x ?? 0; const cy = pre?.crop?.y ?? 0;
+    return { left: `${((cx + focus.bbox.x0 / s) / dims.w) * 100}%`, top: `${((cy + focus.bbox.y0 / s) / dims.h) * 100}%`,
       width: `${((focus.bbox.x1 - focus.bbox.x0) / s / dims.w) * 100}%`, height: `${((focus.bbox.y1 - focus.bbox.y0) / s / dims.h) * 100}%` };
   })() : null;
   return (

@@ -5,7 +5,7 @@ import { useSession } from '../session';
 import { ErrorBox, Id, Loading, fmtDate, useAction, useApi } from '../ui';
 import { DocumentList, useDefinitions } from './shared';
 
-const FIELD_LABEL: Record<string, string> = { heats: 'Heat numbers', batches: 'Batch numbers', serials: 'Serial numbers', product_name: 'Product name', description: 'Description' };
+const FIELD_LABEL: Record<string, string> = { heats: 'Heat numbers', batches: 'Batch numbers', serials: 'Serial numbers', product_name: 'Part description', description: 'Notes' };
 
 function ReviewItem({ item, canDecide, onDone }: { item: any; canDecide: boolean; onDone: (msg: string) => void }) {
   const defs = useDefinitions();
@@ -25,7 +25,7 @@ function ReviewItem({ item, canDecide, onDone }: { item: any; canDecide: boolean
     <article className="panel">
       <div className="spread">
         <div>
-          <h2 style={{ marginBottom: 2 }}>{item.kind === 'product' ? 'Product' : 'Manufacturing record'} <Link to={item.kind === 'product' ? `/products/${item.code}` : `/records/${item.code}`}><Id>{item.code}</Id></Link>, version {item.versionNo}</h2>
+          <h2 style={{ marginBottom: 2 }}>{item.kind === 'product' ? 'Product' : 'Shipment record'} <Link to={item.kind === 'product' ? `/products/${item.code}` : `/records/${item.code}`}><Id>{item.code}</Id></Link>, version {item.versionNo}</h2>
           <div className="small muted">{item.title}. {item.supplierName}, submitted by {item.submittedBy} {fmtDate(item.submittedAt)}</div>
         </div>
       </div>

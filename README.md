@@ -1,13 +1,22 @@
 # SPIR: Supplier Product Information Registry (proof of concept)
 
 SPIR is a company-owned registry for **supplier product identity, manufacturing traceability and certificates**,
-built from *SPIR Architecture & Requirements Specification v1.1*. This PoC uses cast valve bodies and fictional suppliers.
+built from *SPIR Architecture & Requirements Specification v1.1*. This PoC uses valve components and fictional suppliers.
+
+**How a part is identified** (from real receiving labels):
+
+| Mandatory | Optional |
+|---|---|
+| Part number (company item number), purchase order number + PO line, heat number, quantity, pattern number, supplier | Radiographic test (RT) number, part description, material, design revision, country of origin |
+
+A product is one company part number from one supplier. Each **shipment** against a PO line is a separate
+record with its own versions, certificates and QR label.
 
 What it does, in one line per role:
 
 | Who | What they do in SPIR |
 |---|---|
-| Supplier contributor | Registers products and manufacturing records (heats, batches, serials), uploads MTC/CoC, submits for approval |
+| Supplier contributor | Registers products and shipment records (PO line, quantity, heats, pattern, RT), uploads MTC/CoC/RT reports, submits for approval |
 | Company reviewer | Sees a diff of every submission, approves or rejects with a reason. Approval publishes it and activates its QR label |
 | QR user | Scans a QR label, signs in, and sees **only the latest approved** record and its certificates |
 | Label inspector | Photographs an existing supplier sticker. OCR reads it, and SPIR shows a field-by-field validation matrix against the approved record |
@@ -92,29 +101,48 @@ Excel or the Codespace CSV viewer. The full guide is in [`seed/README.md`](seed/
 * `supplier_ref`, `product_ref`, `traceability_ref` are **your** linking keys. SPIR creates the official IDs.
 * Repeat a `traceability_ref` on a later row to create a **newer version** (e.g. `APPROVED` then `PENDING`).
 * Lists use `|`: `HT-77813|HT-77814`. Documents use `TYPE:file.pdf`.
+* **Real data goes in `seed/local/*.csv`** (git-ignored, loaded after the demo file). Never put real POs in the main CSV: the repo is public.
 * Add a new column and it becomes a new **attribute** automatically. No code change needed.
 
 After editing: `npm run db:reset`.
 
 ## Trying the label check
 
-`seed/labels/` holds five demo sticker photos, each showing a different outcome:
+`seed/labels/` holds six demo photos in the layouts of the real labels (fictional data):
 
 | Photo | Expected result | Why |
 |---|---|---|
-| `fcf-trc1-correct.png` | Pass | Everything matches |
-| `fcf-trc1-wrong-heat.png` | Fail | Heat HT-77819 vs approved HT-77812 |
-| `fcf-trc3-serial-only-in-pending-version.png` | Fail | SN-10042 exists only in a *pending* version. Checks always compare with the approved one |
-| `nhg-trc1-german-tag.png` | Needs review | German field names are understood, but OCR was unsure of the heat number |
-| `dac-trc1-angled-blurry.png` | Needs review | Blurred photo, low confidence on the material grade |
+| `supplier-label-fcf-t001-correct.png` | Pass | Every field checks out |
+| `supplier-label-fcf-t001-wrong-quantity.png` | Fail | Quantity `01/05` = 5, approved 3 |
+| `supplier-label-fcf-t003-quantity-only-in-pending-version.png` | Fail | Quantity 3 exists only in a *pending* update. Checks always compare with the approved version |
+| `receiving-label-fcf-t002.png` | Needs review | Part number and PO come from the barcodes, but this label type carries no supplier or heat |
+| `supplier-label-dac-t001-angled-blurry.png` | Needs review | OCR read the heat as `DH-55%0` and lost the slash in `12/12`. Flagged, not failed |
+| `supplier-label-nhg-t001-with-rt-and-pattern.png` | Pass with warnings | Pattern and RT numbers checked; description read with low confidence |
 
-Sign in as **Priya Nair (Label inspector)** > *Check a product label* > *Upload photo* > *Read the label* >
-*Compare with the registry*. On the result page, click a row to see where it was read, then press *Review*
-to correct an OCR misread or raise a discrepancy. **Nothing on this page ever changes registry data.**
+Sign in as **Priya Nair (Label inspector)** > *Check a product label* > *Upload photo* > **drag a box around the label** >
+*Read the label* > *Compare with the registry*. Click a row to see where it was read; press *Review* to correct a misread.
+**Nothing on this page ever changes registry data.**
 
-When your real sticker photos arrive, the label profile (`api/db/migrations/003_label_profile_v2.sql`) gets a
-new version with their field words and calibrated confidence thresholds, and the photos join the test corpus in
-`api/test/fixtures/`.
+### Getting good results on real labels
+
+Tested on three real receiving photos (kept private). What decides success:
+
+1. **Crop to the label.** On the full photo Tesseract read almost nothing (26-35% confidence). Cropped and enlarged, it read
+   the supplier, part number, PO, heat and country correctly.
+2. **Use the camera's original resolution.** Photos forwarded through chat apps are 450-800 px wide, which is too small for the barcodes
+   (only a tight crop of one barcode decoded). A phone camera's original photo is 4000+ px.
+3. **Avoid glare from plastic wrap and stamps over the text.** These made two of the three real photos unreadable.
+4. Hand-ticked fields (pen marks over "02/02") are read with low confidence and go to review. That's intended.
+
+How the matching copes with OCR damage, without ever guessing a match:
+* Field names with OCR errors are still recognised ("artNe" = Part No, "PONe" = PO No, "Qry" = QTY), but only when the value follows directly.
+* Part numbers and 10-digit POs are also found by their shape; bare barcodes are assigned to a field by shape.
+* A read with impossible characters (`DH-55%0`), a cut-off read (`DH-55`) or a quantity with a lost slash (`1212`) goes to **review**, not fail.
+* An exact read of a long identifier counts as a match even when Tesseract's confidence is low (it's poorly calibrated for codes).
+  Short values (quantity, line, revision) still need a human when confidence is low.
+* A record is matched by part number + (PO or heat), or PO + (heat or PO line). Names and descriptions are never used for matching.
+
+To add your real photos to the test suite privately, see `api/test/private-corpus.test.ts`.
 
 ## Tests
 
@@ -122,9 +150,10 @@ new version with their field words and calibrated confidence thresholds, and the
 npm test
 ```
 
-41 tests run the whole API against an in-process Postgres with the real seed CSV. They cover supplier isolation,
-approval and supersede rules, QR tokens (401/403/404/410, rotation), signed downloads, the 9 field results, the
-overall status policy and a golden corpus of **real Tesseract output** from the demo photos.
+54 tests run the whole API against an in-process Postgres with the real seed CSV. They cover supplier isolation,
+approval and supersede rules, QR tokens (401/403/404/410, rotation), signed downloads, the field results, the
+overall status policy, and a golden corpus of **real Tesseract + ZXing output** from the demo photos. A private corpus of real
+label photos runs only where its git-ignored files exist.
 
 ## Security notes for this PoC
 

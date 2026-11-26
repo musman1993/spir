@@ -30,7 +30,7 @@ export function App() {
     { name: 'Registry', items: [
       { to: '/', label: 'Overview' },
       { to: '/products', label: supplier ? 'My products' : 'Products' },
-      { to: '/records', label: supplier ? 'My traceability records' : 'Traceability records' },
+      { to: '/records', label: supplier ? 'My shipment records' : 'Shipment records' },
       { to: '/review', label: 'Review queue', roles: ['COMPANY_REVIEWER', 'REGISTRY_ADMIN', 'AUDITOR'], count: queue?.items.length },
     ] },
     { name: 'Inspection', items: [

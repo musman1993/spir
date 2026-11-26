@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { Link, useParams } from 'react-router-dom';
 import { api, qrLinkFor } from '../api';
 import { useSession } from '../session';
-import { Chip, ErrorBox, Id, Loading, Modal, fmtDate, fmtDay, useAction, useApi } from '../ui';
+import { Chip, ErrorBox, Id, Loading, Modal, fmtDate, useAction, useApi } from '../ui';
 import { AttributeList, DocumentList, useDefinitions, useSearch } from './shared';
 
 export function Records() {
@@ -15,27 +15,28 @@ export function Records() {
     <>
       <div className="spread page-head">
         <div>
-          <h1>{supplier ? 'My traceability records' : 'Traceability records'}</h1>
-          <p className="lede">Each record is one manufacturing context (heats, batches, serials, certificates) for one product, with its own QR label.</p>
+          <h1>{supplier ? 'My shipment records' : 'Shipment records'}</h1>
+          <p className="lede">Each record is one shipment of one part against one PO line: quantity, heats, pattern, RT and certificates, with its own QR label.</p>
         </div>
-        {supplier && <Link className="btn primary" to="/records/new">Add a manufacturing record</Link>}
+        {supplier && <Link className="btn primary" to="/records/new">Add a shipment record</Link>}
       </div>
       <div className="row" style={{ marginBottom: 12 }}>
-        <input className="search" type="search" placeholder="Search by record ID, product ID, heat or supplier ref" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search records" />
+        <input className="search" type="search" placeholder="Search by PO, part number, heat or record ID" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search records" />
       </div>
       <ErrorBox error={error} />
       {!data && !error && <Loading />}
       {data && (data.records.length === 0 ? <div className="empty">No records match.</div> : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Record</th><th>Product</th><th>Heats</th><th>Manufactured</th>{!supplier && <th>Supplier</th>}<th>Status</th><th>QR</th></tr></thead>
+            <thead><tr><th>Record</th><th>Part number</th><th>PO / line</th><th>Qty</th><th>Heats</th>{!supplier && <th>Supplier</th>}<th>Status</th><th>QR</th></tr></thead>
             <tbody>
               {data.records.map((r) => (
                 <tr key={r.code}>
                   <td><Link to={`/records/${r.code}`}><Id>{r.code}</Id></Link></td>
-                  <td>{r.productName}<div className="small muted"><Id>{r.productCode}</Id></div></td>
+                  <td><Id>{r.partNumber}</Id><div className="small muted">{r.productName}</div></td>
+                  <td className="nobr"><Id>{r.purchaseOrder ?? "-"}</Id>{r.poLine ? <span className="small muted"> / {r.poLine}</span> : null}</td>
+                  <td>{r.quantity ?? '-'}</td>
                   <td><Id>{(r.heats ?? []).join(', ')}</Id></td>
-                  <td>{fmtDay(r.manufacturingDate)}</td>
                   {!supplier && <td>{r.supplierName}</td>}
                   <td>{r.approvedVersion ? <Chip status="APPROVED" /> : null} {r.latestStatus !== 'APPROVED' && <Chip status={r.latestStatus} />}</td>
                   <td>{r.hasQr ? 'Active' : <span className="muted">-</span>}</td>
@@ -49,20 +50,21 @@ export function Records() {
   );
 }
 
-/** The hang tag: the approved identity of one manufacturing record. */
+/** The hang tag: the approved identity of one shipment record. */
 export function HangTag({ rec, version }: { rec: any; version: any }) {
+  const a = version?.attributes ?? {};
   return (
     <div className="tag">
       <div className="tag-code">{rec.code}</div>
       <div className="tag-title">{rec.product?.name}</div>
       <dl className="facts">
-        <dt>Product</dt><dd><Id>{rec.product?.code}</Id></dd>
-        <dt>Part number</dt><dd><Id>{rec.product?.supplierPartNumber}</Id></dd>
-        <dt>Material</dt><dd><Id>{rec.product?.attributes?.body_material_grade ?? '-'}</Id>{rec.product?.attributes?.pressure_class ? `, ${rec.product.attributes.pressure_class}` : ''}{rec.product?.attributes?.nominal_size ? `, ${rec.product.attributes.nominal_size}` : ''}</dd>
+        <dt>Part number</dt><dd><Id>{rec.product?.partNumber}</Id>{rec.product?.attributes?.design_revision ? <> Rev <Id>{rec.product.attributes.design_revision}</Id></> : null}</dd>
+        <dt>PO / line</dt><dd><Id>{a.purchase_order_number ?? '-'}</Id>{a.po_line_number ? <> line <Id>{a.po_line_number}</Id></> : null}</dd>
+        <dt>Quantity</dt><dd>{a.quantity ?? '-'}</dd>
         <dt>Heats</dt><dd className="tag-heats">{version?.heats?.length ? version.heats.map((h: string) => <span key={h}>{h}</span>) : '-'}</dd>
-        <dt>Batches</dt><dd><Id>{version?.batches?.join(', ') || '-'}</Id></dd>
-        <dt>Serials</dt><dd style={{ whiteSpace: 'normal' }}>{version?.serials?.length ? version.serials.map((x: string) => <span key={x} className="id" style={{ marginRight: 10 }}>{x}</span>) : '-'}</dd>
-        <dt>Manufactured</dt><dd>{fmtDay(version?.attributes?.manufacturing_date)}</dd>
+        <dt>Pattern</dt><dd><Id>{a.pattern_number ?? '-'}</Id></dd>
+        {a.radiographic_test_number && <><dt>RT report</dt><dd><Id>{a.radiographic_test_number}</Id></dd></>}
+        {rec.product?.attributes?.material && <><dt>Material</dt><dd>{rec.product.attributes.material}</dd></>}
         <dt>Supplier</dt><dd>{rec.supplier?.name}</dd>
       </dl>
     </div>
@@ -97,7 +99,8 @@ function QrPanel({ rec, onChange }: { rec: any; onChange: () => void }) {
           <div>
             <div className="id" style={{ fontSize: '1.15rem' }}>{rec.code}</div>
             <div className="small">{rec.product?.name}</div>
-            <div className="small"><Id>{rec.approved?.heats?.join(', ')}</Id></div>
+            <div className="small">Part <Id>{rec.product?.partNumber}</Id>, PO <Id>{rec.approved?.attributes?.purchase_order_number}</Id> / {rec.approved?.attributes?.po_line_number}</div>
+            <div className="small">Heat <Id>{rec.approved?.heats?.join(', ')}</Id>, qty {rec.approved?.attributes?.quantity}</div>
             <div className="small muted" style={{ marginTop: 6 }}>Scan with a company device. Sign-in required.</div>
           </div>
         </div>
@@ -146,8 +149,8 @@ export function RecordDetail() {
     <>
       <div className="spread page-head">
         <div>
-          <p className="muted small" style={{ marginBottom: 4 }}><Link to="/records">Traceability records</Link> / <Link to={`/products/${rec.product.code}`}>{rec.product.code}</Link></p>
-          <h1>Manufacturing record <Id>{rec.code}</Id></h1>
+          <p className="muted small" style={{ marginBottom: 4 }}><Link to="/records">Shipment records</Link> / <Link to={`/products/${rec.product.code}`}>{rec.product.code}</Link></p>
+          <h1>Shipment record <Id>{rec.code}</Id></h1>
           <div className="row">{rec.approved ? <Chip status="APPROVED" /> : <Chip status={latest?.status} />}{open && rec.approved && <Chip status={open.status} />}{rec.externalRef && <span className="small muted">Supplier ref {rec.externalRef}</span>}</div>
         </div>
         {supplier && (
@@ -164,7 +167,7 @@ export function RecordDetail() {
         <div className="stack">
           {shown && <HangTag rec={rec} version={shown} />}
           <section className="panel">
-            <h2>Manufacturing attributes{shown ? `, version ${shown.versionNo}` : ''}</h2>
+            <h2>Shipment details{shown ? `, version ${shown.versionNo}` : ''}</h2>
             <AttributeList defs={defs} scope="TRACEABILITY" values={shown?.attributes ?? {}} />
           </section>
           <section className="panel">
@@ -180,7 +183,7 @@ export function RecordDetail() {
               {rec.versions.map((v: any) => (
                 <li key={v.id} className={v.status}>
                   <div className="row"><strong>Version {v.versionNo}</strong><Chip status={v.status} /></div>
-                  <div className="small">Heats <Id>{v.heats.join(', ') || '-'}</Id>, serials <Id>{v.serials.join(', ') || '-'}</Id></div>
+                  <div className="small">PO <Id>{v.attributes?.purchase_order_number ?? '-'}</Id>{v.attributes?.po_line_number ? `/${v.attributes.po_line_number}` : ''}, qty {v.attributes?.quantity ?? '-'}, heat <Id>{v.heats.join(', ') || '-'}</Id></div>
                   <div className="small muted">{v.source === 'SEED' ? 'Imported' : 'Created'} {fmtDate(v.createdAt)}{v.reviewedAt ? `, reviewed by ${v.reviewedBy}` : ''}</div>
                   {v.reviewComment && <div className="small">"{v.reviewComment}"</div>}
                 </li>

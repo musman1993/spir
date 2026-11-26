@@ -23,6 +23,25 @@ export const zxingBarcode: BarcodeAdapter = {
       return []; // nothing decodable in this image
     }
   },
+  /**
+   * Labels carry several 1D barcodes stacked vertically and ZXing returns one result per image, so the
+   * image is also scanned in overlapping horizontal strips. Each distinct value is returned once.
+   */
+  async decodeAll(canvas) {
+    const found = new Map<string, BarcodeRead>();
+    const add = (rs: BarcodeRead[]) => rs.forEach((r) => found.has(r.text) || found.set(r.text, r));
+    add(await this.decodeImage(canvas));
+    const stripH = Math.max(60, Math.round(canvas.height / 4));
+    const step = Math.max(30, Math.round(stripH / 2));
+    for (let y = 0; y + 20 < canvas.height; y += step) {
+      const h = Math.min(stripH, canvas.height - y);
+      const strip = document.createElement('canvas');
+      strip.width = canvas.width; strip.height = h;
+      strip.getContext('2d')!.drawImage(canvas, 0, y, canvas.width, h, 0, 0, canvas.width, h);
+      add(await this.decodeImage(strip));
+    }
+    return [...found.values()];
+  },
   async startLive(video, onRead, deviceId) {
     const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 150 });
     let lastText = '';

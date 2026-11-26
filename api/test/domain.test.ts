@@ -42,9 +42,17 @@ describe('field comparison (spec 11A.16 illustrative matrix)', () => {
   it('genuine mismatch', () => {
     expect(compareField(ident('heat'), 'HT-77812', cand('HT-99999', 0.97), opts).result).toBe('MISMATCH');
   });
-  it('low confidence never becomes a match', () => {
-    expect(compareField(ident('serial'), 'SN-10022', cand('SN-10022', 0.58), opts).result).toBe('LOW_CONFIDENCE');
-    expect(compareField(ident('serial'), 'SN-10022', cand('SN-1002?', 0.58), opts).result).toBe('LOW_CONFIDENCE');
+  it('low confidence: unequal or short values never match; an exact long identifier does (compare-v2)', () => {
+    expect(compareField(ident('serial'), 'SN-10022', cand('SN-10028', 0.58), opts).result).toBe('LOW_CONFIDENCE');
+    expect(compareField(ident('rev'), 'C', cand('C', 0.30), opts).result).toBe('LOW_CONFIDENCE');
+    const exact = compareField(ident('heat'), 'HT-77812', cand('HT-77812', 0.36), opts);
+    expect(exact.result).toBe('MATCH');
+    expect(exact.note).toMatch(/only 36%/);
+  });
+  it('junk characters or a cut-off read go to review, not mismatch', () => {
+    expect(compareField(ident('heat'), 'DH-5590', cand('DH-55%0', 0.9), opts).result).toBe('REVIEW_REQUIRED');
+    expect(compareField(ident('heat'), 'DH-5590', cand('DH-55', 0.9), opts).result).toBe('REVIEW_REQUIRED');
+    expect(compareField(ident('heat'), 'DH-5590', cand('DH-6601', 0.9), opts).result).toBe('MISMATCH');
   });
   it('date parsed using the label profile locale', () => {
     const d: FieldDefinition = { ...ident('mfg', false), rule: { method: 'date' } };
@@ -75,7 +83,40 @@ describe('overall status policy', () => {
   it('warnings and pass', () => {
     expect(overallStatus([{ critical: true, result: 'MATCH' }, { critical: false, result: 'MISMATCH' }], true)).toBe('PASS_WITH_WARNINGS');
     expect(overallStatus([{ critical: true, result: 'MATCH' }, { critical: false, result: 'NOT_APPLICABLE' }], true)).toBe('PASS');
+    expect(overallStatus([{ critical: true, result: 'MATCH' }, { critical: false, result: 'MISSING_ON_LABEL' }], true)).toBe('PASS');
+    expect(overallStatus([{ critical: true, result: 'MISSING_ON_LABEL' }], true)).toBe('NEEDS_REVIEW');
     expect(overallStatus([{ critical: true, result: 'MATCH' }], false)).toBe('UNRESOLVED');
+  });
+});
+
+describe('receiving-label methods', () => {
+  it('quantity: "02/02" is piece 2 of a quantity of 2', () => {
+    expect(normalize("02/02 No's", { method: 'quantity' }, [])).toEqual({ ok: true, value: '2' });
+    expect(normalize('09/10 Nos', { method: 'quantity' }, [])).toEqual({ ok: true, value: '10' });
+    expect(normalize('10 EA', { method: 'quantity' }, [])).toEqual({ ok: true, value: '10' });
+  });
+  it('quantity with a lost slash ("1212" for "12/12") goes to review', () => {
+    const q: FieldDefinition = { ...ident('qty'), rule: { method: 'quantity' } };
+    expect(compareField(q, '12', cand('1212'), opts).result).toBe('REVIEW_REQUIRED');
+    expect(compareField(q, '12', cand('13'), opts).result).toBe('MISMATCH');
+  });
+  it('PO line accepts "LINE 4", "#04", "4"', () => {
+    for (const v of ['LINE 4', '#04', '4', 'Line # 4']) expect(normalize(v, { method: 'integer' }, [])).toEqual({ ok: true, value: '4' });
+  });
+  it('company names ignore legal forms and OCR damage at the end', () => {
+    const d: FieldDefinition = { ...ident('supplier'), rule: { method: 'name' } };
+    expect(compareField(d, 'Harbour Valve Works Private Limited', cand('HARBOUR VALVE WORKS PVT. LTD.'), opts).result).toBe('MATCH');
+    expect(compareField(d, 'Harbour Valve Works Private Limited', cand('Harbour Valve Works Private Limits)'), opts).result).toBe('MATCH');
+    expect(compareField(d, 'Deccan Alloy Castings Private Limited', cand('Deccan Alloy Castings Pvt. Lud'), opts).result).toBe('MATCH');
+    expect(compareField(d, 'Harbour Valve Works Private Limited', cand('Falcon Crest Foundry LLC'), opts).result).toBe('MISMATCH');
+  });
+  it('descriptions: truncation on the label still agrees', () => {
+    const d: FieldDefinition = { ...ident('desc', false), rule: { method: 'text' } };
+    expect(compareField(d, 'CAGE,EQUAL PERCENT ~ 2,CL1500,1 7/8PORT,1 1/2TR,CTD BORE', cand('CAGE,EQUAL PERCENT ~ 2,CL1500,1 7/8PORT'), opts).result).toBe('MATCH');
+    expect(compareField(d, 'CAGE,EQUAL PERCENT ~ 2,CL1500', cand('PLUG,BAL ~ 7 ORF'), opts).result).toBe('MISMATCH');
+  });
+  it('dates like 23-NOV-2026', () => {
+    expect(parseDate('23-NOV-2026', ['DD-MMM-YYYY'])).toBe('2026-11-23');
   });
 });
 

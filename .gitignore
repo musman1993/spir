@@ -9,3 +9,8 @@ coverage/
 *.log
 .DS_Store
 seed/output/
+
+# Private real-world samples (real PO numbers, part numbers, supplier names, photos). Never commit.
+seed/local/*
+!seed/local/README.md
+api/test/fixtures/local/

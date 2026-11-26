@@ -5,7 +5,40 @@ import type { BarcodeRead, CameraDevice } from '../devices';
 import { zxingBarcode } from '../devices/barcode';
 import { browserCamera, describeCameraError } from '../devices/camera';
 import { tesseractOcr, type OcrResult } from '../devices/ocr';
-import { DEFAULT_PREPROCESS, loadImage, preprocess, qualityCheck, type Preprocess } from '../devices/preprocess';
+import { DEFAULT_PREPROCESS, loadImage, preprocess, preprocessWithScale, qualityCheck, type Preprocess } from '../devices/preprocess';
+
+type Crop = NonNullable<Preprocess['crop']>;
+
+/** Drag a box on the photo to tell the OCR engine where the label is. Works with mouse, pen and touch. */
+function CropBox({ src, natural, crop, onChange }: { src: string; natural: { w: number; h: number }; crop?: Crop; onChange: (c?: Crop) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const pos = (e: React.PointerEvent) => {
+    const r = box.current!.getBoundingClientRect();
+    return { x: Math.max(0, Math.min(r.width, e.clientX - r.left)), y: Math.max(0, Math.min(r.height, e.clientY - r.top)), r };
+  };
+  const down = (e: React.PointerEvent) => { const p = pos(e); box.current!.setPointerCapture(e.pointerId); setDrag({ x0: p.x, y0: p.y, x1: p.x, y1: p.y }); };
+  const move = (e: React.PointerEvent) => { if (!drag) return; const p = pos(e); setDrag({ ...drag, x1: p.x, y1: p.y }); };
+  const up = (e: React.PointerEvent) => {
+    if (!drag) return;
+    const { r } = pos(e);
+    const sx = natural.w / r.width; const sy = natural.h / r.height;
+    const x = Math.min(drag.x0, drag.x1) * sx; const y = Math.min(drag.y0, drag.y1) * sy;
+    const w = Math.abs(drag.x1 - drag.x0) * sx; const h = Math.abs(drag.y1 - drag.y0) * sy;
+    setDrag(null);
+    onChange(w > 30 && h > 30 ? { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) } : undefined);
+  };
+  const shown = drag
+    ? { left: Math.min(drag.x0, drag.x1), top: Math.min(drag.y0, drag.y1), width: Math.abs(drag.x1 - drag.x0), height: Math.abs(drag.y1 - drag.y0), unit: 'px' }
+    : crop ? { left: (crop.x / natural.w) * 100, top: (crop.y / natural.h) * 100, width: (crop.w / natural.w) * 100, height: (crop.h / natural.h) * 100, unit: '%' } : null;
+  return (
+    <div ref={box} className="cropbox" onPointerDown={down} onPointerMove={move} onPointerUp={up}
+      role="application" aria-label="Drag a box around the label">
+      <img src={src} alt="Captured label photo" draggable={false} />
+      {shown && <div className="crop-sel" style={{ left: shown.left + shown.unit, top: shown.top + shown.unit, width: shown.width + shown.unit, height: shown.height + shown.unit }} />}
+    </div>
+  );
+}
 import { ErrorBox, Id, useAction, useApi } from '../ui';
 
 type Stage = 'capture' | 'review' | 'reading' | 'read';
@@ -15,13 +48,14 @@ export function LabelCheck() {
   const [params] = useSearchParams();
   const pinned = params.get('record');
   const [profiles] = useApi<{ profiles: { key: string; version: number; name: string }[] }>('/label-profiles');
-  const [profileKey, setProfileKey] = useState('GENERIC_VALVE_CASTING');
+  const [profileKey, setProfileKey] = useState('');
   const [stage, setStage] = useState<Stage>('capture');
   const [live, setLive] = useState(false);
   const [cams, setCams] = useState<CameraDevice[]>([]);
   const [cam, setCam] = useState('');
   const [camErr, setCamErr] = useState<string | null>(null);
   const [original, setOriginal] = useState<Blob | null>(null);
+  const [originalUrl, setOriginalUrl] = useState('');
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [quality, setQuality] = useState<ReturnType<typeof qualityCheck> | null>(null);
   const [pre, setPre] = useState<Preprocess>(DEFAULT_PREPROCESS);
@@ -30,18 +64,21 @@ export function LabelCheck() {
   const [ocr, setOcr] = useState<OcrResult | null>(null);
   const [barcodes, setBarcodes] = useState<BarcodeRead[]>([]);
   const [source, setSource] = useState<'camera' | 'upload'>('upload');
+  const [ocrScale, setOcrScale] = useState(1);
   const video = useRef<HTMLVideoElement>(null);
   const { busy, error, run, setError } = useAction();
 
   useEffect(() => () => browserCamera.stop(), []);
+  useEffect(() => { if (!profileKey && profiles?.profiles.length) setProfileKey(profiles.profiles[0].key); }, [profiles, profileKey]);
   useEffect(() => {
     if (!img) return;
-    setPreview(preprocess(img, pre, 1200).toDataURL('image/jpeg', 0.85));
+    setPreview(preprocess(img, pre, 1000).toDataURL('image/jpeg', 0.85));
   }, [img, pre]);
 
   const accept = async (blob: Blob, from: 'camera' | 'upload') => {
     const i = await loadImage(blob);
     setOriginal(blob); setImg(i); setQuality(qualityCheck(i)); setSource(from);
+    setOriginalUrl(i.src); setPre(DEFAULT_PREPROCESS);
     setOcr(null); setBarcodes([]); setStage('review');
   };
 
@@ -58,11 +95,13 @@ export function LabelCheck() {
 
   const read = () => run(async () => {
     setStage('reading');
-    const canvas = preprocess(img!, pre);
-    // QR/barcodes are decoded from the original and the processed image; OCR reads the processed one.
+    const { canvas, scale } = preprocessWithScale(img!, pre);
+    setOcrScale(scale);
+    // Barcodes: whole original photo + the cropped, upscaled image scanned strip by strip.
+    // OCR reads the cropped, upscaled, contrast-adjusted image.
     const [codesA, codesB, text] = await Promise.all([
       zxingBarcode.decodeImage(img!),
-      zxingBarcode.decodeImage(canvas),
+      zxingBarcode.decodeAll(canvas),
       tesseractOcr.recognize(canvas, (p, s) => setProgress({ p, s })),
     ]);
     const seen = new Set<string>();
@@ -84,7 +123,7 @@ export function LabelCheck() {
       barcodes,
       device: {
         source, cameraLabel: cams.find((c) => c.deviceId === cam)?.label ?? null,
-        image: quality?.metrics, preprocessing: pre, capturedAt: new Date().toISOString(),
+        image: quality?.metrics, preprocessing: { ...pre, scale: ocrScale }, capturedAt: new Date().toISOString(),
       },
     }));
     const r = await api<{ code: string }>('/validations', { form });
@@ -121,12 +160,25 @@ export function LabelCheck() {
                 )}
               </div>
               {camErr && <div className="notice error" style={{ marginTop: 12 }}>{camErr}</div>}
-              <p className="small muted" style={{ marginTop: 12 }}>Fill the dashed frame with the label, square on, without glare. Include any QR or barcode on it.</p>
+              <p className="small muted" style={{ marginTop: 12 }}>Fill the dashed frame with the label, square on, without glare from plastic wrap. Include its barcodes. Use the camera's full resolution: photos forwarded through chat apps are usually too compressed to read.</p>
             </>
           )}
           {stage !== 'capture' && img && (
             <>
-              <div className="capture-stage" style={{ aspectRatio: 'auto' }}><img src={preview} alt="Label as the OCR engine will read it" /></div>
+              {stage === 'review' ? (
+                <>
+                  <p className="small" style={{ marginTop: 0 }}><strong>Drag a box around the label.</strong> OCR reads labels far better when the photo is cropped to just the label, without tape, stamps or floor around it.</p>
+                  <CropBox src={originalUrl} natural={{ w: img.naturalWidth, h: img.naturalHeight }} crop={pre.crop} onChange={(crop) => setPre({ ...pre, crop })} />
+                  <div className="row" style={{ marginTop: 8 }}>
+                    {pre.crop ? <span className="small">Cropped to {pre.crop.w} x {pre.crop.h} px{Math.max(pre.crop.w, pre.crop.h) < 1000 ? ', will be enlarged for OCR' : ''}.</span> : <span className="small muted">No crop: the whole photo will be read.</span>}
+                    {pre.crop && <button className="btn small" onClick={() => setPre({ ...pre, crop: undefined })}>Clear crop</button>}
+                  </div>
+                  <h3 style={{ marginTop: 14 }}>What the OCR engine will read</h3>
+                  <div className="capture-stage" style={{ aspectRatio: 'auto', maxHeight: 260 }}><img src={preview} alt="Label as the OCR engine will read it" /></div>
+                </>
+              ) : (
+                <div className="capture-stage" style={{ aspectRatio: 'auto' }}><img src={preview} alt="Label as the OCR engine will read it" /></div>
+              )}
               {quality && !quality.ok && <div className="notice warn" style={{ marginTop: 12 }}>{quality.warnings.map((w) => <div key={w}>{w}</div>)}</div>}
               {stage === 'review' && (
                 <div className="stack" style={{ marginTop: 12 }}>

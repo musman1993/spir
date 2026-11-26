@@ -30,8 +30,8 @@ const createSchema = z.object({
   categoryCode: z.string().min(1),
   productName: z.string().trim().min(2).max(200),
   description: z.string().max(2000).optional().nullable(),
-  supplierPartNumber: z.string().trim().min(2).max(80),
-  manufacturerPartNumber: z.string().trim().max(80).optional().nullable(),
+  partNumber: z.string().trim().min(2).max(80),
+  supplierPartNumber: z.string().trim().max(80).optional().nullable(),
   attributes: z.record(z.any()).default({}),
 });
 const draftSchema = createSchema.pick({ productName: true, description: true, attributes: true });
@@ -50,7 +50,7 @@ export function productRoutes() {
               av.version_no AS "approvedVersion",
               ov.version_no AS "openVersion", ov.status AS "openStatus",
               lv.status AS "latestStatus",
-              (SELECT value FROM spir.product_identifier i WHERE i.product_id = pr.id AND i.id_type = 'SUPPLIER_PART_NUMBER' LIMIT 1) AS "supplierPartNumber",
+              (SELECT value FROM spir.product_identifier i WHERE i.product_id = pr.id AND i.id_type = 'COMPANY_PART_NUMBER' LIMIT 1) AS "partNumber",
               av.attributes AS "attributes",
               (SELECT count(*)::int FROM spir.traceability_record t WHERE t.product_id = pr.id
                   AND ($2 OR t.current_approved_version_id IS NOT NULL)) AS "traceabilityCount"
@@ -84,7 +84,9 @@ export function productRoutes() {
                 lv.status AS "latestStatus",
                 (SELECT array_agg(h.heat_number ORDER BY h.heat_number) FROM spir.traceability_version_heat vh JOIN spir.heat h ON h.id = vh.heat_id
                   WHERE vh.version_id = coalesce(av.id, lv.id)) AS "heats",
-                coalesce(av.attributes, lv.attributes)->>'manufacturing_date' AS "manufacturingDate"
+                coalesce(av.attributes, lv.attributes)->>'purchase_order_number' AS "purchaseOrder",
+                coalesce(av.attributes, lv.attributes)->>'po_line_number' AS "poLine",
+                coalesce(av.attributes, lv.attributes)->>'quantity' AS "quantity"
            FROM spir.traceability_record t
            LEFT JOIN spir.traceability_version av ON av.id = t.current_approved_version_id
            LEFT JOIN spir.traceability_version ov ON ov.traceability_id = t.id AND ov.status IN ('DRAFT','PENDING')
@@ -119,21 +121,22 @@ export function productRoutes() {
       const cat = await tx.one('SELECT code FROM spir.product_category WHERE code = $1', [body.categoryCode]);
       if (!cat) throw invalid(`Unknown category ${body.categoryCode}.`);
       const supplier = (await tx.one<{ supplier_code: string }>('SELECT supplier_code FROM spir.supplier WHERE id = $1', [p.supplierId]))!;
-      // Duplicate control (FR-PRD-006): the supplier part number identifies the product within the supplier's namespace.
+      // Duplicate control (FR-PRD-006): a supplier registers each company part number once.
+      // Identifiers are namespaced by the registering supplier, so two suppliers may supply the same part.
       const dup = await tx.one<{ product_code: string }>(
         `SELECT pr.product_code FROM spir.product_identifier i JOIN spir.product pr ON pr.id = i.product_id
-          WHERE i.issuer = $1 AND i.id_type = 'SUPPLIER_PART_NUMBER' AND upper(i.value) = $2`,
-        [supplier.supplier_code, normIdentifier(body.supplierPartNumber)],
+          WHERE i.issuer = $1 AND i.id_type = 'COMPANY_PART_NUMBER' AND upper(i.value) = $2`,
+        [supplier.supplier_code, normIdentifier(body.partNumber)],
       );
       if (dup) throw conflict('DUPLICATE_PRODUCT', `Part number already registered as ${dup.product_code}. Update that product instead.`, { productCode: dup.product_code });
       const prod = (await tx.one<{ id: string; product_code: string }>(
         'INSERT INTO spir.product (supplier_id, category_code) VALUES ($1, $2) RETURNING id, product_code', [p.supplierId, body.categoryCode],
       ))!;
-      await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1, 'SUPPLIER_PART_NUMBER', $2, $3)`,
-        [prod.id, supplier.supplier_code, body.supplierPartNumber.trim()]);
-      if (body.manufacturerPartNumber?.trim()) {
-        await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1, 'MANUFACTURER_PART_NUMBER', $2, $3)`,
-          [prod.id, supplier.supplier_code, body.manufacturerPartNumber.trim()]);
+      await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1, 'COMPANY_PART_NUMBER', $2, $3)`,
+        [prod.id, supplier.supplier_code, body.partNumber.trim()]);
+      if (body.supplierPartNumber?.trim()) {
+        await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1, 'SUPPLIER_PART_NUMBER', $2, $3)`,
+          [prod.id, supplier.supplier_code, body.supplierPartNumber.trim()]);
       }
       const v = await upsertDraft(tx, 'product', prod.id, { product_name: body.productName, description: body.description ?? null, attributes: clean }, p);
       await audit(tx, p, 'CREATE', 'product', prod.id, { productCode: prod.product_code, versionNo: v.version_no }, c.get('cid'));

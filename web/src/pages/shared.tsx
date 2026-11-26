@@ -40,7 +40,7 @@ export function AttributeList({ defs, scope, values }: { defs: AttrDef[] | null;
 }
 
 export interface Doc { code: string; type: string; revision: string; fileName: string; sizeBytes: number; versionNo: number; versionStatus: string; sha256: string; createdAt: string }
-const DOC_LABEL: Record<string, string> = { MTC: 'Material test certificate', COC: 'Certificate of conformance', INSPECTION_REPORT: 'Inspection report', DRAWING: 'Drawing', OTHER: 'Other document' };
+const DOC_LABEL: Record<string, string> = { MTC: 'Material test certificate', COC: 'Certificate of conformance', RT_REPORT: 'Radiographic test report', INSPECTION_REPORT: 'Inspection report', DRAWING: 'Drawing', OTHER: 'Other document' };
 
 export function DocumentList({ docs }: { docs: Doc[] }) {
   const { error, run } = useAction();

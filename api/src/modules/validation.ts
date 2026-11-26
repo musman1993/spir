@@ -13,16 +13,16 @@ import { audit } from '../lib/audit.js';
 import { sha256Hex } from '../lib/crypto.js';
 import { extractFields, type Candidate, type Extraction, type LabelProfileConfig } from '../domain/extract.js';
 import { COMPARE_RULE_VERSION, OVERALL_POLICY_VERSION, compareField, overallStatus, type FieldDefinition, type FieldResult, type MatrixRow } from '../domain/compare.js';
-import { normIdentifier } from '../domain/normalize.js';
+import { normalize } from '../domain/normalize.js';
 import { loadDefinitions, type AttributeDefinition } from './attributes.js';
 import { associations } from './traceability.js';
 
-export const RESOLVER_VERSION = 'resolver-v1';
+export const RESOLVER_VERSION = 'resolver-v2';
 export const RULE_VERSION = `${COMPARE_RULE_VERSION}/${OVERALL_POLICY_VERSION}/${RESOLVER_VERSION}`;
 const VALIDATION_ROLES = ['INSPECTOR', 'COMPANY_REVIEWER', 'REGISTRY_ADMIN'] as const;
 
 const payloadSchema = z.object({
-  labelProfileKey: z.string().default('GENERIC_VALVE_CASTING'),
+  labelProfileKey: z.string().default('RECEIVING_LABELS'),
   traceabilityCode: z.string().optional().nullable(),
   ocr: z.object({
     engine: z.string().optional(), engineVersion: z.string().optional(),
@@ -55,10 +55,10 @@ interface Resolution {
 }
 
 /**
- * resolver-v1: deterministic, namespaced identifiers only - never names (FR-OCR-008).
+ * resolver-v2: deterministic identifiers only - never names or descriptions (FR-OCR-008).
  *   1. A decoded SPIR QR token wins.
  *   2. Otherwise a record is RESOLVED when exactly one approved record matches
- *      (supplier part number AND heat/batch/serial) or (two of heat/batch/serial).
+ *      part number AND (PO or heat), or PO AND (heat or PO line). The PO line also breaks ties.
  *   3. Anything weaker or tied is AMBIGUOUS and the operator must choose.
  */
 async function resolveRecord(db: Db, ex: Extraction, manualCode?: string | null): Promise<Resolution> {
@@ -74,47 +74,58 @@ async function resolveRecord(db: Db, ex: Extraction, manualCode?: string | null)
         WHERE q.token_hash = $1 AND t.current_approved_version_id IS NOT NULL`, [sha256Hex(token)]);
     if (r?.status === 'ACTIVE') return { status: 'RESOLVED', method: 'QR_TOKEN', traceabilityId: r.traceability_id, candidates: [], note: 'Resolved from the SPIR QR code on the label.' };
   }
-  const val = (k: string) => (ex.candidates[k]?.raw ? normIdentifier(ex.candidates[k].raw!) : null);
-  const spn = val('supplier_part_number');
-  const heat = val('heat_number');
-  const batch = val('batch_number');
-  const serial = val('serial_number');
-  if (!spn && !heat && !batch && !serial) {
-    return { status: 'UNRESOLVED', method: 'NONE', traceabilityId: null, candidates: [], note: 'No identifiers could be read from the label.' };
+  const read = (k: string, method: 'identifier' | 'integer') => {
+    const raw = ex.candidates[k]?.raw;
+    if (!raw) return null;
+    const n = normalize(raw, { method }, []);
+    return n.ok ? n.value : null;
+  };
+  const part = read('part_number', 'identifier');
+  const po = read('purchase_order_number', 'identifier');
+  const line = read('po_line_number', 'integer');
+  const heat = read('heat_number', 'identifier');
+  if (!part && !po && !heat) {
+    return { status: 'UNRESOLVED', method: 'NONE', traceabilityId: null, candidates: [], note: 'No part number, PO or heat number could be read from the label.' };
   }
-  const rows = await db.query<{ id: string; code: string; product_code: string; product_name: string; spn: string | null; heats: string[]; batches: string[]; serials: string[] }>(
+  const rows = await db.query<{ id: string; code: string; product_code: string; product_name: string; part: string | null; po: string | null; line: string | null; heats: string[] }>(
     `SELECT t.id, t.traceability_code AS code, p.product_code, pv.product_name,
-            (SELECT upper(value) FROM spir.product_identifier i WHERE i.product_id = p.id AND i.id_type = 'SUPPLIER_PART_NUMBER' LIMIT 1) AS spn,
-            coalesce((SELECT array_agg(upper(h.heat_number)) FROM spir.traceability_version_heat x JOIN spir.heat h ON h.id = x.heat_id WHERE x.version_id = t.current_approved_version_id), '{}') AS heats,
-            coalesce((SELECT array_agg(upper(b.batch_number)) FROM spir.traceability_version_batch x JOIN spir.batch b ON b.id = x.batch_id WHERE x.version_id = t.current_approved_version_id), '{}') AS batches,
-            coalesce((SELECT array_agg(upper(serial_number)) FROM spir.traceability_version_serial x WHERE x.version_id = t.current_approved_version_id), '{}') AS serials
+            (SELECT upper(value) FROM spir.product_identifier i WHERE i.product_id = p.id AND i.id_type = 'COMPANY_PART_NUMBER' LIMIT 1) AS part,
+            upper(tv.attributes->>'purchase_order_number') AS po,
+            tv.attributes->>'po_line_number' AS line,
+            coalesce((SELECT array_agg(upper(h.heat_number)) FROM spir.traceability_version_heat x JOIN spir.heat h ON h.id = x.heat_id WHERE x.version_id = tv.id), '{}') AS heats
        FROM spir.traceability_record t
+       JOIN spir.traceability_version tv ON tv.id = t.current_approved_version_id
        JOIN spir.product p ON p.id = t.product_id
-       JOIN spir.product_version pv ON pv.id = p.current_approved_version_id
-      WHERE t.current_approved_version_id IS NOT NULL`,
+       JOIN spir.product_version pv ON pv.id = p.current_approved_version_id`,
   );
   const scored = rows.map((r) => {
     const matchedOn: string[] = [];
-    if (spn && r.spn === spn) matchedOn.push('supplier_part_number');
+    if (part && r.part === part) matchedOn.push('part_number');
+    if (po && r.po === po) matchedOn.push('purchase_order_number');
+    if (po && r.po === po && line && r.line != null && String(Number(r.line)) === line) matchedOn.push('po_line_number');
     if (heat && r.heats.includes(heat)) matchedOn.push('heat_number');
-    if (batch && r.batches.includes(batch)) matchedOn.push('batch_number');
-    if (serial && r.serials.includes(serial)) matchedOn.push('serial_number');
-    const mfg = matchedOn.filter((m) => m !== 'supplier_part_number').length;
-    const strong = (matchedOn.includes('supplier_part_number') && mfg >= 1) || mfg >= 2;
+    const has = (k: string) => matchedOn.includes(k);
+    const strong = (has('part_number') && (has('purchase_order_number') || has('heat_number')))
+      || (has('purchase_order_number') && (has('heat_number') || has('po_line_number')));
     return { r, matchedOn, strong };
   }).filter((s) => s.matchedOn.length);
   const toCand = (s: (typeof scored)[number]): ResolveCandidate => ({
     traceabilityId: s.r.id, code: s.r.code, productCode: s.r.product_code, productName: s.r.product_name, matchedOn: s.matchedOn,
   });
-  const strong = scored.filter((s) => s.strong);
+  let strong = scored.filter((s) => s.strong);
+  if (strong.length > 1 && strong.some((s) => s.matchedOn.includes('po_line_number'))) strong = strong.filter((s) => s.matchedOn.includes('po_line_number'));
+  if (strong.length > 1) {
+    const best = Math.max(...strong.map((s) => s.matchedOn.length));
+    if (strong.filter((s) => s.matchedOn.length === best).length === 1) strong = strong.filter((s) => s.matchedOn.length === best);
+  }
   if (strong.length === 1) {
-    return { status: 'RESOLVED', method: 'IDENTIFIERS', traceabilityId: strong[0].r.id, candidates: [toCand(strong[0])], note: `Matched on ${strong[0].matchedOn.join(' + ')}.` };
+    return { status: 'RESOLVED', method: 'IDENTIFIERS', traceabilityId: strong[0].r.id, candidates: [toCand(strong[0])], note: `Matched on ${strong[0].matchedOn.map((m) => m.replace(/_/g, ' ')).join(' + ')}.` };
   }
   const list = (strong.length ? strong : scored).sort((a, b) => b.matchedOn.length - a.matchedOn.length).slice(0, 20).map(toCand);
-  if (!list.length) return { status: 'UNRESOLVED', method: 'NONE', traceabilityId: null, candidates: [], note: 'No published record matches the identifiers read from the label.' };
+  if (!list.length) return { status: 'UNRESOLVED', method: 'NONE', traceabilityId: null, candidates: [], note: 'No published record matches the part number, PO or heat read from the label.' };
   return {
     status: 'AMBIGUOUS', method: 'NONE', traceabilityId: null, candidates: list,
-    note: strong.length > 1 ? 'More than one record matches - choose the correct one.' : 'Only a partial identifier match was found - confirm the record.',
+    note: strong.length > 1 ? 'More than one record matches - choose the correct one.' : 'Only a partial match was found - confirm the record.',
   };
 }
 
@@ -124,11 +135,12 @@ const toFieldDef = (d: AttributeDefinition): FieldDefinition => ({
 
 /** Pins the current approved product + traceability versions and returns the expected values. */
 async function approvedValues(db: Db, traceabilityId: string, defs: AttributeDefinition[]) {
-  const t = (await db.one<{ trc_version: string; product_version: string; product_id: string }>(
-    `SELECT t.current_approved_version_id AS trc_version, p.current_approved_version_id AS product_version, p.id AS product_id
-       FROM spir.traceability_record t JOIN spir.product p ON p.id = t.product_id WHERE t.id = $1`, [traceabilityId]))!;
+  const t = (await db.one<{ trc_version: string; product_version: string; product_id: string; supplier_name: string }>(
+    `SELECT t.current_approved_version_id AS trc_version, p.current_approved_version_id AS product_version, p.id AS product_id, s.legal_name AS supplier_name
+       FROM spir.traceability_record t JOIN spir.product p ON p.id = t.product_id JOIN spir.supplier s ON s.id = p.supplier_id
+      WHERE t.id = $1`, [traceabilityId]))!;
   const [pv, tv, ids, assoc] = await Promise.all([
-    db.one<{ attributes: Record<string, string> }>('SELECT attributes FROM spir.product_version WHERE id = $1', [t.product_version]),
+    db.one<{ attributes: Record<string, string>; product_name: string }>('SELECT attributes, product_name FROM spir.product_version WHERE id = $1', [t.product_version]),
     db.one<{ attributes: Record<string, string> }>('SELECT attributes FROM spir.traceability_version WHERE id = $1', [t.trc_version]),
     db.query<{ id_type: string; value: string }>('SELECT id_type, value FROM spir.product_identifier WHERE product_id = $1', [t.product_id]),
     associations(db, t.trc_version),
@@ -140,6 +152,8 @@ async function approvedValues(db: Db, traceabilityId: string, defs: AttributeDef
     else if (src === 'heats') values[d.attribute_key] = assoc.heats;
     else if (src === 'batches') values[d.attribute_key] = assoc.batches;
     else if (src === 'serials') values[d.attribute_key] = assoc.serials;
+    else if (src === 'supplier') values[d.attribute_key] = t.supplier_name;
+    else if (src === 'product_name') values[d.attribute_key] = pv?.product_name ?? null;
     else values[d.attribute_key] = (d.scope === 'PRODUCT' ? pv?.attributes : tv?.attributes)?.[d.attribute_key] ?? null;
   }
   return { values, productVersionId: t.product_version, traceabilityVersionId: t.trc_version };

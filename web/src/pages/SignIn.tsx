@@ -6,7 +6,7 @@ import { ErrorBox, Loading, TagMark, useApi } from '../ui';
 interface DemoUser { id: string; displayName: string; role: Role; supplierName: string | null }
 
 const WHAT_THEY_DO: Record<Role, string> = {
-  SUPPLIER_CONTRIBUTOR: 'Registers products and manufacturing records, uploads certificates and submits them for approval.',
+  SUPPLIER_CONTRIBUTOR: 'Registers products and shipment records, uploads certificates and submits them for approval.',
   COMPANY_REVIEWER: 'Checks submitted data and evidence, then approves or rejects it. Prints QR labels.',
   REGISTRY_ADMIN: 'Manages attribute definitions, label profiles and QR label lifecycle.',
   QR_USER: 'Scans a QR label and sees the approved record and its certificates.',

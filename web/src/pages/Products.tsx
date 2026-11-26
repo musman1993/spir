@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
 import { useSession } from '../session';
-import { Chip, ErrorBox, Id, Loading, fmtDate, fmtDay, useApi } from '../ui';
+import { Chip, ErrorBox, Id, Loading, fmtDate, useApi } from '../ui';
 import { AttributeList, useDefinitions, useSearch } from './shared';
 
 export function Products() {
@@ -13,12 +13,12 @@ export function Products() {
       <div className="spread page-head">
         <div>
           <h1>{supplier ? 'My products' : 'Products'}</h1>
-          <p className="lede">A product is a stable identity. Its manufacturing runs are separate traceability records.</p>
+          <p className="lede">One product per company part number a supplier supplies. Each shipment against a PO line is a separate record with its own QR label.</p>
         </div>
         {supplier && <Link className="btn primary" to="/products/new">Register a product</Link>}
       </div>
       <div className="row" style={{ marginBottom: 12 }}>
-        <input className="search" type="search" placeholder="Search by product ID, name or part number" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search products" />
+        <input className="search" type="search" placeholder="Search by part number, description or product ID" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search products" />
       </div>
       <ErrorBox error={error} />
       {!data && !error && <Loading />}
@@ -27,15 +27,15 @@ export function Products() {
       ) : (
         <div className="table-wrap">
           <table className="table">
-            <thead><tr><th>Product ID</th><th>Name</th><th>Supplier part number</th>{!supplier && <th>Supplier</th>}<th>Material</th><th>Status</th><th>Records</th></tr></thead>
+            <thead><tr><th>Part number</th><th>Description</th><th>Product ID</th>{!supplier && <th>Supplier</th>}<th>Material</th><th>Status</th><th>Records</th></tr></thead>
             <tbody>
               {data.products.map((p) => (
                 <tr key={p.code}>
-                  <td><Link to={`/products/${p.code}`}><Id>{p.code}</Id></Link></td>
-                  <td>{p.name}</td>
-                  <td><Id>{p.supplierPartNumber}</Id></td>
+                  <td><Link to={`/products/${p.code}`}><Id>{p.partNumber}</Id></Link>{p.attributes?.design_revision && <span className="small muted"> Rev {p.attributes.design_revision}</span>}</td>
+                  <td className="small">{p.name}</td>
+                  <td><Id>{p.code}</Id></td>
                   {!supplier && <td>{p.supplierName}</td>}
-                  <td><Id>{p.attributes?.body_material_grade ?? '-'}</Id></td>
+                  <td className="small">{p.attributes?.material ?? '-'}</td>
                   <td>{p.approvedVersion ? <Chip status="APPROVED" /> : <Chip status={p.latestStatus} />}{p.openStatus && p.approvedVersion ? <> <Chip status={p.openStatus} /></> : null}</td>
                   <td>{p.traceabilityCount}</td>
                 </tr>
@@ -70,7 +70,7 @@ export function ProductDetail() {
         {supplier && (
           <div className="row">
             {open?.status !== 'PENDING' && <Link className="btn" to={`/products/${p.code}/edit`}>{open ? 'Continue draft' : 'Propose a change'}</Link>}
-            <Link className="btn primary" to={`/records/new?product=${p.code}`}>Add a manufacturing record</Link>
+            <Link className="btn primary" to={`/records/new?product=${p.code}`}>Add a shipment record</Link>
           </div>
         )}
       </div>
@@ -81,10 +81,10 @@ export function ProductDetail() {
             <h2>Product identity</h2>
             <dl className="facts">
               <dt>Supplier</dt><dd>{p.supplier.name} <span className="muted"><Id>{p.supplier.code}</Id></span></dd>
-              <dt>Category</dt><dd>Cast valve body</dd>
+              <dt>Category</dt><dd>{p.category === 'VALVE_COMPONENT' ? 'Valve component' : p.category === 'VALVE_BODY_CAST' ? 'Cast valve body' : p.category}</dd>
               {p.identifiers.map((i: any) => (
                 <div key={i.type + i.value} style={{ display: 'contents' }}>
-                  <dt>{i.type === 'SUPPLIER_PART_NUMBER' ? 'Supplier part number' : i.type === 'MANUFACTURER_PART_NUMBER' ? 'Manufacturer part number' : i.type}</dt>
+                  <dt>{({ COMPANY_PART_NUMBER: 'Part number', SUPPLIER_PART_NUMBER: "Supplier's own part number", MANUFACTURER_PART_NUMBER: 'Manufacturer part number' } as Record<string, string>)[i.type] ?? i.type}</dt>
                   <dd><Id>{i.value}</Id></dd>
                 </div>
               ))}
@@ -96,16 +96,17 @@ export function ProductDetail() {
             <AttributeList defs={defs} scope="PRODUCT" values={shown?.attributes ?? {}} />
           </section>
           <section className="panel">
-            <h2>Traceability records</h2>
-            {p.traceability.length === 0 ? <p className="muted">No manufacturing records yet.</p> : (
+            <h2>Shipment records</h2>
+            {p.traceability.length === 0 ? <p className="muted">No shipment records yet.</p> : (
               <table className="table">
-                <thead><tr><th>Record</th><th>Heats</th><th>Manufactured</th><th>Status</th></tr></thead>
+                <thead><tr><th>Record</th><th>PO / line</th><th>Qty</th><th>Heats</th><th>Status</th></tr></thead>
                 <tbody>
                   {p.traceability.map((t: any) => (
                     <tr key={t.code}>
                       <td><Link to={`/records/${t.code}`}><Id>{t.code}</Id></Link>{t.externalRef && <div className="small muted">Supplier ref {t.externalRef}</div>}</td>
+                      <td className="nobr"><Id>{t.purchaseOrder ?? "-"}</Id>{t.poLine ? <span className="small muted"> / {t.poLine}</span> : null}</td>
+                      <td>{t.quantity ?? '-'}</td>
                       <td><Id>{(t.heats ?? []).join(', ')}</Id></td>
-                      <td>{fmtDay(t.manufacturingDate)}</td>
                       <td>{t.approvedVersion ? <Chip status="APPROVED" /> : <Chip status={t.latestStatus} />}{t.openStatus && t.approvedVersion ? <> <Chip status={t.openStatus} /></> : null}</td>
                     </tr>
                   ))}

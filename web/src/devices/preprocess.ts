@@ -12,9 +12,14 @@ export async function loadImage(blob: Blob): Promise<HTMLImageElement> {
   return img;
 }
 
-export function preprocess(img: HTMLImageElement, p: Preprocess, maxSide = 2400): HTMLCanvasElement {
+/**
+ * Crop -> scale -> rotate -> greyscale/contrast. Small crops are UPSCALED so text is ~30px high for
+ * Tesseract (real label photos sent through chat apps are often only 450-800px wide). Returns the scale
+ * used so OCR bounding boxes can be mapped back onto the original photo.
+ */
+export function preprocessWithScale(img: HTMLImageElement, p: Preprocess, targetSide = 2000, maxUpscale = 4): { canvas: HTMLCanvasElement; scale: number } {
   const crop = p.crop ?? { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
-  const scale = Math.min(1, maxSide / Math.max(crop.w, crop.h));
+  const scale = Math.min(maxUpscale, targetSide / Math.max(crop.w, crop.h));
   const w = Math.round(crop.w * scale);
   const h = Math.round(crop.h * scale);
   const swap = p.rotate === 90 || p.rotate === 270;
@@ -24,6 +29,7 @@ export function preprocess(img: HTMLImageElement, p: Preprocess, maxSide = 2400)
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
   ctx.translate(c.width / 2, c.height / 2);
   ctx.rotate((p.rotate * Math.PI) / 180);
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, crop.x, crop.y, crop.w, crop.h, -w / 2, -h / 2, w, h);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   if (p.grayscale || p.contrast !== 1 || p.threshold) {
@@ -43,7 +49,11 @@ export function preprocess(img: HTMLImageElement, p: Preprocess, maxSide = 2400)
     }
     ctx.putImageData(d, 0, 0);
   }
-  return c;
+  return { canvas: c, scale };
+}
+
+export function preprocess(img: HTMLImageElement, p: Preprocess, targetSide = 2000): HTMLCanvasElement {
+  return preprocessWithScale(img, p, targetSide).canvas;
 }
 
 /** Quick suitability checks: resolution, brightness, and a blur estimate (variance of a Laplacian). */

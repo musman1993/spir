@@ -22,17 +22,17 @@ import { issueToken } from '../modules/qr.js';
 import { simplePdf } from './pdf.js';
 
 const CORE = new Set([
-  'supplier_ref', 'supplier_name', 'supplier_country', 'product_ref', 'product_name', 'category', 'product_status',
-  'supplier_part_number', 'manufacturer_part_number', 'description', 'traceability_ref', 'approval_status',
+  'supplier_ref', 'supplier_name', 'supplier_country', 'product_ref', 'part_number', 'part_description', 'category', 'product_status',
+  'supplier_part_number', 'traceability_ref', 'approval_status',
   'heat_numbers', 'batch_numbers', 'serial_numbers', 'documents', 'review_comment',
 ]);
 const STATUSES = ['DRAFT', 'PENDING', 'APPROVED', 'REJECTED'] as const;
 type Status = (typeof STATUSES)[number];
 
 const split = (s: string | undefined) => (s ?? '').split('|').map((x) => x.trim()).filter(Boolean);
-const status = (s: string | undefined, row: number): Status => {
+const status = (s: string | undefined, row: string): Status => {
   const v = (s || 'APPROVED').trim().toUpperCase() as Status;
-  if (!STATUSES.includes(v)) throw new Error(`Row ${row}: status "${s}" must be one of ${STATUSES.join(', ')}`);
+  if (!STATUSES.includes(v)) throw new Error(`${row}: status "${s}" must be one of ${STATUSES.join(', ')}`);
   return v;
 };
 
@@ -46,11 +46,17 @@ export const DEMO_COMPANY_USERS = [
 
 export interface SeedReport { suppliers: number; products: number; records: number; versions: number; documents: number; qrTokens: number; newAttributes: string[] }
 
+export interface SeedFile { name: string; text: string }
+
 export async function loadSeed(
-  db: Db, storage: FileStorage, qrKey: Buffer, csvText: string, opts: { documentsDir?: string; log?: (m: string) => void } = {},
+  db: Db, storage: FileStorage, qrKey: Buffer, csv: string | SeedFile[], opts: { documentsDir?: string; log?: (m: string) => void } = {},
 ): Promise<SeedReport> {
   const log = opts.log ?? (() => {});
-  const rows: Record<string, string>[] = parse(csvText, { columns: true, skip_empty_lines: true, trim: true, bom: true });
+  const files: SeedFile[] = typeof csv === 'string' ? [{ name: 'seed.csv', text: csv }] : csv;
+  // Rows from several files are loaded as one data set (e.g. public demo + private seed/local/*.csv).
+  const rows: (Record<string, string> & { __file?: string; __line?: string })[] = files.flatMap((f) =>
+    (parse(f.text, { columns: true, skip_empty_lines: true, trim: true, bom: true }) as Record<string, string>[])
+      .map((r, i) => ({ ...r, __file: f.name, __line: String(i + 2) })));
   if (!rows.length) throw new Error('Seed CSV has no rows.');
   const report: SeedReport = { suppliers: 0, products: 0, records: 0, versions: 0, documents: 0, qrTokens: 0, newAttributes: [] };
 
@@ -61,7 +67,11 @@ export async function loadSeed(
     // Register any new CSV columns as governed attributes (spec 7.1: attributes are metadata, not code).
     let defs = await loadDefinitions(tx);
     const known = new Set(defs.map((d) => d.attribute_key));
-    for (const col of Object.keys(rows[0])) {
+    const retired = new Set((await tx.query<{ attribute_key: string }>(
+      `SELECT attribute_key FROM spir.attribute_definition GROUP BY attribute_key HAVING bool_and(status = 'DEPRECATED')`)).map((r) => r.attribute_key));
+    const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].filter((c) => !c.startsWith('__'));
+    for (const col of columns) {
+      if (retired.has(col)) throw new Error(`Column "${col}" is a retired attribute. Remove it from the CSV (see seed/README.md for the current columns).`);
       if (CORE.has(col) || known.has(col)) continue;
       await tx.query(
         `INSERT INTO spir.attribute_definition (attribute_key, version, label, scope, data_type, label_checked, display_order, description)
@@ -81,10 +91,10 @@ export async function loadSeed(
     const records = new Map<string, { id: string; code: string; versionNo: number; supplierId: string }>();
     const reviewer = { userId: 'reviewer', displayName: 'Aisha Rahman', role: 'COMPANY_REVIEWER' as const, supplierId: null };
 
-    for (const [i, row] of rows.entries()) {
-      const line = i + 2;
-      for (const req of ['supplier_ref', 'supplier_name', 'product_ref', 'product_name', 'category', 'supplier_part_number', 'traceability_ref']) {
-        if (!row[req]) throw new Error(`Row ${line}: column "${req}" is required.`);
+    for (const row of rows) {
+      const line = `${row.__file} row ${row.__line}`;
+      for (const req of ['supplier_ref', 'supplier_name', 'product_ref', 'part_number', 'part_description', 'category', 'traceability_ref']) {
+        if (!row[req]) throw new Error(`${line}: column "${req}" is required.`);
       }
 
       // Supplier + one demo contributor login per supplier.
@@ -103,20 +113,20 @@ export async function loadSeed(
       }
 
       const attrsFor = (scope: 'PRODUCT' | 'TRACEABILITY') => Object.fromEntries(
-        Object.entries(row).filter(([k, v]) => !CORE.has(k) && v !== '' && scopeOf.get(k) === scope));
+        Object.entries(row).filter(([k, v]) => !CORE.has(k) && !k.startsWith('__') && v !== '' && scopeOf.get(k) === scope));
 
       // Product (first row for a product_ref defines it).
       let prod = products.get(row.product_ref);
       if (!prod) {
         const cat = await tx.one('SELECT code FROM spir.product_category WHERE code = $1', [row.category]);
-        if (!cat) throw new Error(`Row ${line}: unknown category "${row.category}". Add it in a migration first.`);
+        if (!cat) throw new Error(`${line}: unknown category "${row.category}". Add it in a migration first.`);
         const p = (await tx.one<{ id: string; product_code: string }>(
           'INSERT INTO spir.product (supplier_id, category_code) VALUES ($1,$2) RETURNING id, product_code', [sup.id, row.category]))!;
-        await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1,'SUPPLIER_PART_NUMBER',$2,$3)`,
-          [p.id, sup.code, row.supplier_part_number]);
-        if (row.manufacturer_part_number) {
-          await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1,'MANUFACTURER_PART_NUMBER',$2,$3)`,
-            [p.id, sup.code, row.manufacturer_part_number]);
+        await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1,'COMPANY_PART_NUMBER',$2,$3)`,
+          [p.id, sup.code, row.part_number]);
+        if (row.supplier_part_number) {
+          await tx.query(`INSERT INTO spir.product_identifier (product_id, id_type, issuer, value) VALUES ($1,'SUPPLIER_PART_NUMBER',$2,$3)`,
+            [p.id, sup.code, row.supplier_part_number]);
         }
         const ps = status(row.product_status, line);
         const v = (await tx.one<{ id: string }>(
@@ -125,12 +135,12 @@ export async function loadSeed(
            VALUES ($1, 1, $2, $3, $4, $5, 'SEED', $6, CASE WHEN $2 <> 'DRAFT' THEN now() END,
                    CASE WHEN $2 IN ('APPROVED','REJECTED') THEN 'reviewer' END, CASE WHEN $2 IN ('APPROVED','REJECTED') THEN now() END)
            RETURNING id`,
-          [p.id, ps, row.product_name, row.description || null, JSON.stringify(attrsFor('PRODUCT')), sup.userId]))!;
+          [p.id, ps, row.part_description, null, JSON.stringify(attrsFor('PRODUCT')), sup.userId]))!;
         if (ps === 'APPROVED') await tx.query('UPDATE spir.product SET current_approved_version_id = $2 WHERE id = $1', [p.id, v.id]);
         prod = { id: p.id, code: p.product_code, category: row.category, supplierId: sup.id };
         products.set(row.product_ref, prod);
         report.products++;
-        log(`  product ${p.product_code}  ${row.product_name} [${ps}]`);
+        log(`  product ${p.product_code}  ${row.part_number} ${row.part_description} [${ps}]`);
       }
 
       // Traceability record; repeated refs become later versions.
@@ -163,17 +173,17 @@ export async function loadSeed(
         const [rawType, ...rest] = entry.split(':');
         const fileName = rest.join(':').trim();
         const docType = rawType.trim().toUpperCase();
-        if (!fileName) throw new Error(`Row ${line}: document "${entry}" must look like TYPE:filename.pdf`);
+        if (!fileName) throw new Error(`${line}: document "${entry}" must look like TYPE:filename.pdf`);
         const local = opts.documentsDir ? path.join(opts.documentsDir, fileName) : '';
         const bytes = local && existsSync(local)
           ? new Uint8Array(readFileSync(local))
           : simplePdf(`${docType} - ${fileName}`, [
-            `Supplier: ${row.supplier_name}`, `Product: ${row.product_name} (${row.supplier_part_number})`,
+            `Supplier: ${row.supplier_name}`,
+            `Part number: ${row.part_number}${row.design_revision ? ` Rev ${row.design_revision}` : ''}   ${row.part_description}`,
+            `Material: ${row.material || '-'}`,
+            `PO ${row.purchase_order_number ?? '-'} line ${row.po_line_number ?? '-'}   Quantity ${row.quantity ?? '-'}`,
+            `Heat(s): ${split(row.heat_numbers).join(', ')}   Pattern: ${row.pattern_number ?? '-'}   RT: ${row.radiographic_test_number || '-'}`,
             `Supplier record: ${row.traceability_ref}   SPIR record: ${rec.code} v${versionNo}`,
-            `Heat(s): ${split(row.heat_numbers).join(', ')}   Batch(es): ${split(row.batch_numbers).join(', ')}`,
-            `Material: ${row.body_material_grade ?? ''}   Class: ${row.pressure_class ?? ''}   Size: ${row.nominal_size ?? ''}`,
-            `Tensile ${row.tensile_strength_mpa ?? '-'} MPa   Yield ${row.yield_strength_mpa ?? '-'} MPa   Hardness ${row.hardness_hb ?? '-'} HB`,
-            `Manufactured ${row.manufacturing_date ?? '-'}   Origin ${row.country_of_origin ?? '-'}`,
           ]);
         const media = fileName.toLowerCase().endsWith('.png') ? 'image/png' : fileName.toLowerCase().match(/\.jpe?g$/) ? 'image/jpeg' : 'application/pdf';
         const revision = /rev([A-Z])\./i.exec(fileName)?.[1]?.toUpperCase() ?? 'A';

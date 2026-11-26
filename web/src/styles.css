@@ -124,7 +124,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--cobalt); outline
 input.mono, textarea.mono { font-family: var(--mono); }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px 16px; }
 .field-error { color: var(--hold); font-size: .8rem; font-weight: 400; }
-.search { min-width: 280px; }
+.search { min-width: min(380px, 100%); }
 
 /* Status chips: lifecycle states */
 .chip { display: inline-block; font-size: .78rem; font-weight: 600; padding: 1px 8px; border-radius: 10px; border: 1px solid transparent; white-space: nowrap; line-height: 1.6; }
@@ -188,6 +188,11 @@ input.mono, textarea.mono { font-family: var(--mono); }
 .progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
 .progress > div { height: 100%; background: var(--cobalt); transition: width .2s; }
 .ocr-text { font-family: var(--mono); font-size: .82rem; white-space: pre-wrap; background: #f6f8f9; border: 1px solid var(--line); border-radius: var(--r-s); padding: 10px; max-height: 260px; overflow: auto; margin: 0; }
+
+/* Crop tool */
+.cropbox { position: relative; touch-action: none; cursor: crosshair; user-select: none; border-radius: var(--r-s); overflow: hidden; background: #1b1f22; }
+.cropbox img { width: 100%; display: block; pointer-events: none; }
+.crop-sel { position: absolute; outline: 2px solid var(--manila); box-shadow: 0 0 0 9999px rgba(27,31,34,.55); pointer-events: none; }
 
 /* Validation matrix */
 .matrix td { vertical-align: middle; }

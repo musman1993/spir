@@ -1,13 +1,13 @@
 // npm run db:seed  - loads seed/spir_seed.csv (or a CSV path given as argument).
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPgDatabase } from '../src/providers/db.js';
 import { createStorageFromEnv, readConfig } from '../src/config.js';
 import { loadSeed } from '../src/seed/loadSeed.js';
+import { seedFiles } from '../src/seed/files.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const csvPath = path.resolve(process.argv[2] ?? path.join(root, 'seed/spir_seed.csv'));
+const csvPath = process.argv[2] ? path.resolve(process.argv[2]) : undefined;
 const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is not set (copy .env.example to .env).');
 
@@ -15,9 +15,10 @@ const config = readConfig(process.env);
 if (config.insecureDevKey) console.warn('!! QR_TOKEN_KEY is not set: seeded QR labels will only re-print with the same insecure dev key.');
 const db = await createPgDatabase(url);
 const storage = await createStorageFromEnv(process.env, config.fileSigningSecret);
-console.log(`Seeding from ${path.relative(process.cwd(), csvPath)} (storage: ${storage.kind})`);
+const files = seedFiles(root, csvPath);
+console.log(`Seeding from ${files.map((f) => f.name).join(' + ')} (storage: ${storage.kind})`);
 try {
-  const report = await loadSeed(db, storage, config.qrKey, readFileSync(csvPath, 'utf8'), {
+  const report = await loadSeed(db, storage, config.qrKey, files, {
     documentsDir: path.join(root, 'seed/documents'),
     log: (m) => console.log(m),
   });

@@ -79,8 +79,8 @@ export async function recordDetail(db: Db, p: Principal, rec: NonNullable<Awaite
     userNames(db),
     db.one(
       `SELECT p.product_code AS "code", p.category_code AS "category", v.product_name AS "name", v.version_no AS "approvedVersion", v.attributes,
-              (SELECT value FROM spir.product_identifier i WHERE i.product_id = p.id AND i.id_type='SUPPLIER_PART_NUMBER' LIMIT 1) AS "supplierPartNumber",
-              (SELECT value FROM spir.product_identifier i WHERE i.product_id = p.id AND i.id_type='MANUFACTURER_PART_NUMBER' LIMIT 1) AS "manufacturerPartNumber"
+              (SELECT value FROM spir.product_identifier i WHERE i.product_id = p.id AND i.id_type='COMPANY_PART_NUMBER' LIMIT 1) AS "partNumber",
+              (SELECT value FROM spir.product_identifier i WHERE i.product_id = p.id AND i.id_type='SUPPLIER_PART_NUMBER' LIMIT 1) AS "supplierPartNumber"
          FROM spir.product p
          LEFT JOIN spir.product_version v ON v.id = coalesce(p.current_approved_version_id,
                (SELECT id FROM spir.product_version x WHERE x.product_id = p.id ORDER BY version_no DESC LIMIT 1))
@@ -116,7 +116,7 @@ const createSchema = bodySchema.extend({ productCode: z.string().min(1) });
 const ALLOWED_MEDIA: Record<string, string[]> = {
   'application/pdf': ['.pdf'], 'image/png': ['.png'], 'image/jpeg': ['.jpg', '.jpeg'], 'text/plain': ['.txt'],
 };
-const DOC_TYPES = ['MTC', 'COC', 'INSPECTION_REPORT', 'DRAWING', 'OTHER'] as const;
+const DOC_TYPES = ['MTC', 'COC', 'RT_REPORT', 'INSPECTION_REPORT', 'DRAWING', 'OTHER'] as const;
 
 /** Light content sniffing so a renamed executable can't masquerade as a PDF (FR-DOC-007). */
 function sniff(bytes: Uint8Array): string | null {
@@ -153,7 +153,10 @@ export function traceabilityRoutes() {
               s.legal_name AS "supplierName", av.version_no AS "approvedVersion", lv.version_no AS "latestVersion", lv.status AS "latestStatus",
               (SELECT array_agg(h.heat_number ORDER BY h.heat_number) FROM spir.traceability_version_heat vh JOIN spir.heat h ON h.id = vh.heat_id
                 WHERE vh.version_id = coalesce(av.id, lv.id)) AS "heats",
-              coalesce(av.attributes, lv.attributes)->>'manufacturing_date' AS "manufacturingDate",
+              coalesce(av.attributes, lv.attributes)->>'purchase_order_number' AS "purchaseOrder",
+              coalesce(av.attributes, lv.attributes)->>'po_line_number' AS "poLine",
+              coalesce(av.attributes, lv.attributes)->>'quantity' AS "quantity",
+              (SELECT value FROM spir.product_identifier i WHERE i.product_id = p.id AND i.id_type='COMPANY_PART_NUMBER' LIMIT 1) AS "partNumber",
               EXISTS (SELECT 1 FROM spir.qr_token qt WHERE qt.traceability_id = t.id AND qt.status = 'ACTIVE') AS "hasQr"
          FROM spir.traceability_record t
          JOIN spir.product p ON p.id = t.product_id
@@ -165,6 +168,8 @@ export function traceabilityRoutes() {
         WHERE ($1::uuid IS NULL OR p.supplier_id = $1)
           AND ($2 OR t.current_approved_version_id IS NOT NULL)
           AND ($3 = '' OR t.traceability_code ILIKE '%'||$3||'%' OR p.product_code ILIKE '%'||$3||'%' OR t.external_ref ILIKE '%'||$3||'%'
+               OR coalesce(av.attributes, lv.attributes)->>'purchase_order_number' ILIKE '%'||$3||'%'
+               OR EXISTS (SELECT 1 FROM spir.product_identifier i WHERE i.product_id = p.id AND i.value ILIKE '%'||$3||'%')
                OR EXISTS (SELECT 1 FROM spir.traceability_version_heat vh JOIN spir.heat h ON h.id = vh.heat_id
                            JOIN spir.traceability_version vv ON vv.id = vh.version_id
                           WHERE vv.traceability_id = t.id AND h.heat_number ILIKE '%'||$3||'%'))
@@ -229,7 +234,7 @@ export function traceabilityRoutes() {
       if (open) {
         const { errors } = validateAttributes(defs, 'TRACEABILITY', rec.category_code, open.attributes, true);
         const a = await associations(tx, open.id);
-        if (!a.heats.length && !a.batches.length) errors.push({ field: 'heat_number', message: 'At least one heat or batch number is required.' });
+        if (!a.heats.length) errors.push({ field: 'heat_number', message: 'At least one heat number is required.' });
         if (errors.length) throw invalid('The draft is incomplete.', errors);
       }
       await submitDraft(tx, 'traceability', rec.id, p, c.get('cid'));
