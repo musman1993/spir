@@ -5,11 +5,11 @@ import { createPgDatabase } from '../src/providers/db.js';
 import { createStorageFromEnv, readConfig } from '../src/config.js';
 import { loadSeed } from '../src/seed/loadSeed.js';
 import { seedFiles } from '../src/seed/files.js';
+import { databaseUrl } from './db-url.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const csvPath = process.argv[2] ? path.resolve(process.argv[2]) : undefined;
-const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
-if (!url) throw new Error('DATABASE_URL is not set (copy .env.example to .env).');
+const url = databaseUrl();
 
 const config = readConfig(process.env);
 if (config.insecureDevKey) console.warn('!! QR_TOKEN_KEY is not set: seeded QR labels will only re-print with the same insecure dev key.');
