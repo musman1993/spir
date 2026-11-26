@@ -18,6 +18,7 @@
     "db:seed": "npm run db:seed -w api",
     "db:reset": "npm run db:reset -w api",
     "db:setup": "npm run db:migrate -w api && npm run db:seed -w api",
+    "db:connect": "node scripts/set-database-url.mjs",
     "test": "npm run test -w api && npm run test -w web",
     "typecheck": "npm run typecheck -w api && npm run typecheck -w web",
     "build": "npm run build -w web",

@@ -70,7 +70,8 @@ Open the **Ports** tab and click the globe icon next to port **5173**. Go to **I
    code .env
    ```
    Fill in:
-   * `DATABASE_URL`: Neon console > your SPIR project > **Connect** > copy the connection string.
+   * `DATABASE_URL`: easiest is `npm run db:connect`. It asks for the connection string from Neon console > your SPIR
+     project > **Connect** (input hidden), tests it, and writes it into `.env`. Or paste it into `.env` by hand.
      *Reset the database password first if you ever pasted it somewhere public.*
    * `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`: Neon console > **Credentials** (Object Storage).
      Leave them empty to keep files on local disk while testing.
