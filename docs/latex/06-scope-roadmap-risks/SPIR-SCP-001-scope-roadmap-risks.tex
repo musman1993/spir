@@ -1,9 +1,10 @@
 \makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
 \documentclass[11pt,a4paper]{article}
 \usepackage{spirdoc}
-\SetDoc{SPIR-SCP-001}{Scope, Limitations, Risks and Roadmap}{1.0}{Issued for review}
+\SetDoc{SPIR-SCP-001}{Scope, Limitations, Risks and Roadmap}{1.1}{Issued for review}
 \Revisions{%
   1.0 & 27 Nov 2026 & \SPIRAuthor & First issue for release \SPIRRelease.\\
+  1.1 & 27 Nov 2026 & \SPIRAuthor & Decisions recorded; risk owners assigned; PO match check proposal added.\\
 }
 
 \begin{document}
@@ -111,12 +112,12 @@ Likelihood (L) and impact (I): High, Medium, Low.
 {\small\zebra
 \begin{xltabular}{\linewidth}{@{}L{1.0cm}Y L{1.3cm}L{1.3cm}Y L{1.8cm}@{}}
   \thead\hd{ID} & \hd{Risk} & \hd{L} & \hd{I} & \hd{Treatment} & \hd{Owner}\\\endhead
-  R-01 & Shared admin/admin credentials allow anyone who learns them to change data. & \High & \High & Keep on private address; Phase 1 RBAC and SSO before go-live. & Business owner\\
-  R-02 & Public QR scans expose shipment data and certificates to anyone with the label. & \Med & \Med & Decision recorded (ADR-09); confirm or require company sign-in before production; revoke leaked labels. & Business owner\\
-  R-03 & No review before data is live: a supplier error reaches receiving immediately. & \Med & \Med & Label check catches mismatches; Phase 1 restores approval workflow. & Quality\\
-  R-04 & Credentials were shared in chat during set-up. & \High & \High & Rotate the Neon database password, storage keys and QR key; never paste \code{.env}. & IT / author\\
+  R-01 & Shared admin/admin credentials allow anyone who learns them to change data. & \High & \High & Keep on private address; Phase 1 RBAC and SSO before go-live. & IT\\
+  R-02 & Public QR scans expose shipment data and certificates to anyone with the label. & \Med & \Med & Decided 27 Nov 2026: sign-in for every scan (ADR-12), built in Phase 1; until then synthetic data only; revoke leaked labels. & Quality manager\\
+  R-03 & No review before data is live: a supplier error reaches receiving immediately. & \Med & \Med & Label check catches mismatches at the dock; proposed PO match check (ADR-13) flags differences against the purchase order. & Quality manager\\
+  R-04 & Credentials were shared in chat during set-up. & \High & \High & Rotate the Neon database password, storage keys and QR key; never paste \code{.env}. Do now. & M. Usman\\
   R-05 & OCR accuracy on real photos is not measured on a representative set. & \Med & \Med & Collect 100+ labelled photos; measure precision/recall per field (NFR-OCR-001). & Quality\\
-  R-06 & QR labels printed with a temporary address stop working. & \Med & \High & Set \code{PUBLIC\_APP\_URL} to the permanent address before printing for real parts. & IT\\
+  R-06 & GitHub Pages is the address for now (ADR-14); labels printed on it stop working if the app moves or the personal account changes. & \Med & \High & Print for pilots only; if the app moves, leave a small redirect page at the old address so printed labels keep working; move to a company address before full roll-out. & M. Usman\\
   R-07 & Losing \code{QR\_TOKEN\_KEY} prevents reprinting existing labels (scans still work). & \Low & \Med & Store the key in a password manager and GitHub secret. & IT\\
   R-08 & Free-tier hosting limits (Neon, Codespaces) interrupt demos. & \Med & \Low & Move to paid tier or company hosting in Phase 2. & IT\\
   R-09 & Uploaded files are not malware-scanned. & \Low & \High & Add scanning in Phase 2; keep the bucket private. & IT\\
@@ -140,18 +141,54 @@ Likelihood (L) and impact (I): High, Medium, Low.
 {\small\zebra
 \begin{xltabular}{\linewidth}{@{}L{2.4cm}Y L{3.4cm}@{}}
   \thead\hd{Phase} & \hd{Content} & \hd{Requirements}\\\endhead
-  \textbf{Phase 1}\newline Accounts and control & Individual accounts; roles (supplier user, reviewer, inspector, administrator, auditor); company SSO; one login per supplier user; bring back draft/submit/approve/reject from \code{archive/roles-and-review}; decide on public scans; supplier activation screens; password policy. & FR-SUP-003, FR-SUP-005, FR-WF-001..009, FR-QR-003, FR-ADM-002, NFR-SEC-001\\
+  \textbf{Phase 1}\newline Accounts and control & Individual accounts; roles (supplier user, reviewer, inspector, administrator, auditor); company SSO; one login per supplier user; company sign-in for every QR scan; PO match check with a purchase-order CSV upload (proposed); supplier activation screens; password policy. & FR-SUP-003, FR-SUP-005, FR-QR-003, FR-DOC-005, FR-ADM-002, NFR-SEC-001\\
   \textbf{Phase 2}\newline Production readiness & Company or paid hosting; permanent address; backups and tested restore; monitoring, metrics, alerts; security testing (dependencies, SAST, DAST, penetration test); malware scanning; admin screens for attributes and label profiles; agree NFR targets; refresh OpenAPI. & NFR-AV/PERF/DR/RET/OBS, NFR-SEC-002, FR-DOC-007, FR-ADM-001\\
   \textbf{Phase 3}\newline Integration & X12 832/841 intake, validation, mapping, 997/999 and 824 acknowledgements, quarantine and replay; ERP link for POs and goods receipts. & FR-EDI-001..014, FR-SUP-006/007, NFR-INT-001\\
   \textbf{Phase 4}\newline Inspection at scale & OCR accuracy programme (labelled photo set, per-field thresholds); automatic perspective correction; new label profiles and onboarding; fixed cameras and edge connector; device compatibility matrix; offline capture. & FR-OCR-002/018, FR-DEV-004..010, NFR-OCR-001/002, NFR-DEV-001\\
 \end{xltabular}}
 
-\begin{keypoint}[Decisions needed from the business owner]
-\begin{enumerate}
-  \item Keep QR scans public, or require a company sign-in (affects \req{FR-QR-003}, \req{FR-DOC-005})?
-  \item When must the approval step return, and who reviews?
-  \item Which permanent web address will be printed in QR codes?
-  \item Who owns the risks R-01, R-02 and R-04, and the Phase 1 budget?
-\end{enumerate}
+\clearpage
+\section{Decisions taken}
+Recorded on 27 November 2026.
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{2.6cm}Y L{2.4cm}@{}}
+  \thead\hd{Question} & \hd{Decision} & \hd{Affects}\\\endhead
+  QR scan access & Every scan needs a company sign-in, for the details and the certificates. Not built yet; scans stay open in release \SPIRRelease. & ADR-12; FR-QR-003, FR-DOC-005; R-02\\
+  Approval & Replace manual approval with an automatic PO match check that raises an alarm on differences. A proposal to explore (below). & ADR-13; FR-WF-001..009; R-03\\
+  QR address & GitHub Pages for now; company address before full roll-out. & ADR-14; R-06\\
+  Ownership & Product owner and R-04, R-06: M. Usman. Sponsor and R-02, R-03, R-05: Quality manager. R-01, R-07 to R-09: IT. R-10: developers. Phase 1 budget: to be set by the sponsor. & Risk register\\
+\end{xltabular}}
+
+\subsection{Proposal: PO match check}
+\begin{keypoint}[The idea]
+When a supplier saves a shipment, SPIR compares it with the company's own purchase order. If anything differs, the
+shipment is flagged and the right people are alerted before the parts reach the dock. People only look at the
+exceptions, instead of approving every shipment.
 \end{keypoint}
+
+\textbf{What would be compared} (one row per field; each gives \emph{match}, \emph{within tolerance} or
+\emph{discrepancy}):
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{3.4cm}Y@{}}
+  \thead\hd{Field} & \hd{Rule (to agree)}\\
+  PO number and line & Must exist on an open PO for this supplier.\\
+  Supplier & Must be the PO's supplier.\\
+  Part number and revision & Must equal the PO line.\\
+  Quantity & Within the PO line's open quantity, with an agreed over/under-shipment tolerance.\\
+  Material / grade & Must equal the PO or drawing requirement, where the PO states one.\\
+  Ship or due date & Warn if outside the agreed delivery window.\\
+\end{tabularx}}
+
+\textbf{What happens on a discrepancy}: the shipment is marked \emph{discrepancy} in both portals with the comparison
+shown side by side; an alert goes to the buyer and the Supplier Quality Engineer; at the dock, the scan shows a clear
+warning. Whether a discrepancy should \emph{block} the shipment or only \emph{warn} is an open question.
+
+\textbf{Open questions before building}:
+\begin{enumerate}
+  \item Where the PO data comes from: a CSV export of open POs uploaded by the company (possible in Phase 1), or a
+    direct ERP feed (Phase 3).
+  \item Which fields are blocking and which only warn; the quantity tolerance.
+  \item Who receives the alarm (buyer, Supplier Quality Engineer, receiving lead) and how (in the portal, e-mail).
+  \item Who can clear an alarm, and whether clearing needs a reason (it should, for the audit trail).
+\end{enumerate}
 \end{document}

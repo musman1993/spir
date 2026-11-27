@@ -57,3 +57,12 @@ Short records of decisions made while building the PoC, mapped to the spec's ADR
 - Removed from the app: role switcher, supplier contributor / reviewer / inspector / QR user / auditor roles, review
   queue and approval workflow, open mode. Kept on the branch `archive/roles-and-review` for when RBAC returns.
   Old user rows stay in the database, inactive, because historical versions and audit events point at them.
+
+## Decisions of 27 November 2026 (recorded in the documentation, not yet built)
+
+| ID | Decision | Reason |
+|---|---|---|
+| Scan access | Every QR scan needs a company sign-in (details and certificates). Replaces "QR scans open to anyone" from v0.5. Phase 1. | Shipment data and certificates are company and supplier information |
+| Approval | Proposed: a PO match check compares supplier data with the purchase order and raises an alarm on differences, instead of manual approval. Open questions in SPIR-SCP-001. | People look at exceptions only; receiving already checks every shipment |
+| QR address | GitHub Pages for now; company address before full roll-out; leave a redirect page if it moves | No company domain yet |
+| Ownership | Product owner and credential rotation: M. Usman. Sponsor and scan access: Quality manager. Shared sign-in / SSO: IT | Every risk needs an owner |

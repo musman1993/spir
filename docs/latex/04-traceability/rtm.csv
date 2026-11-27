@@ -35,10 +35,10 @@ FR-DOC-001|Documents|P0|The system must support upload of approved technical evi
 FR-DOC-002|Documents|P0|Each document must be associated with the correct product/traceability context and submission version.|I|Each document is attached to the shipment record and the version it was uploaded to.
 FR-DOC-003|Documents|P0|The system must store metadata including document type, file name, media type, size, revision and source.|I|Type, file name, media type, size, revision and storage key stored.
 FR-DOC-004|Documents|P1|The system must preserve document history when a supplier replaces or revises a file.|I|New uploads never overwrite; earlier documents stay listed with their version.
-FR-DOC-005|Documents|P0|Documents must be private and downloadable only after authorization.|V|Private bucket, 5-minute signed links. By stakeholder decision (v0.5) a scanned QR label also opens its own record certificates without sign-in.
+FR-DOC-005|Documents|P0|Documents must be private and downloadable only after authorization.|V|Private bucket, 5-minute signed links. By stakeholder decision (v0.5) a scanned QR label also opens its own record certificates without sign-in. Decided 27 Nov 2026: sign-in required again (Phase 1).
 FR-DOC-006|Documents|P1|The system should compute and retain a content hash for integrity verification.|I|SHA-256 of every file stored (document.sha256).
 FR-DOC-007|Documents|P0|The system should validate file size, extension, media type and malware-scan result before publication.|P|Size (15 MB), extension, declared and sniffed media type checked; no malware scanning.
-FR-WF-001|Workflow|P0|A supplier must be able to save a draft without publishing it.|D|Removed in v0.5 by decision (saves are live at once). Built in v0.1-v0.4; kept on branch archive/roles-and-review.
+FR-WF-001|Workflow|P0|A supplier must be able to save a draft without publishing it.|D|Removed in v0.5 by decision (saves are live at once). Built in v0.1-v0.4; kept on branch archive/roles-and-review. A PO match check is proposed in its place (SPIR-SCP-001).
 FR-WF-002|Workflow|P0|A supplier must explicitly submit a draft for company review.|D|Removed in v0.5 by decision. Built in v0.1-v0.4 (archive branch).
 FR-WF-003|Workflow|P0|The system must route submitted versions to an authorized reviewer or review queue.|D|Removed in v0.5 by decision. Review queue built in v0.1-v0.4 (archive branch).
 FR-WF-004|Workflow|P0|A reviewer must be able to approve or reject a submitted version.|D|Removed in v0.5 by decision. Approve/reject built in v0.1-v0.4 (archive branch).
@@ -50,7 +50,7 @@ FR-WF-009|Workflow|P0|Approval must record reviewer, timestamp, decision, commen
 FR-WF-010|Workflow|P2|The system should support configurable multi-level approval in a future release.|N|Multi-level approval is a future release item.
 FR-QR-001|QR codes|P0|The system must create one QR token per traceability record under the selected QR model.|I|One ACTIVE token per record (unique index); issued on the first save.
 FR-QR-002|QR codes|P0|The QR must contain an opaque platform locator, not embedded sensitive manufacturing data.|I|The QR holds only a random 16-character token in a link; no product data.
-FR-QR-003|QR codes|P0|The QR must not grant access without successful user authentication and authorization.|V|By stakeholder decision (v0.5) scans are open to anyone. Rate limited; shows one record. Enforced sign-in in v0.1-v0.4.
+FR-QR-003|QR codes|P0|The QR must not grant access without successful user authentication and authorization.|V|By stakeholder decision (v0.5) scans are open to anyone. Rate limited; shows one record. Enforced sign-in in v0.1-v0.4. Decided 27 Nov 2026: sign-in for every scan again (Phase 1).
 FR-QR-004|QR codes|P0|The resolution service must return the latest approved version for the traceability record.|I|Resolution returns the current approved version.
 FR-QR-005|QR codes|P1|The system must support QR activation, revocation and replacement without changing the Traceability ID.|I|Revoke and replace (rotate) keep the Traceability ID (tests).
 FR-QR-006|QR codes|P1|The system should provide controlled print/download output for QR labels.|I|A4 sticker sheets (8/14/21), 300 dpi PNG, CSV links; every code decoded again before printing.

@@ -1,9 +1,10 @@
 \makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
 \documentclass[11pt,a4paper]{article}
 \usepackage{spirdoc}
-\SetDoc{SPIR-EXS-001}{Executive Summary}{1.0}{Issued for review}
+\SetDoc{SPIR-EXS-001}{Executive Summary}{1.1}{Issued for review}
 \Revisions{%
   1.0 & 27 Nov 2026 & \SPIRAuthor & First issue for release \SPIRRelease.\\
+  1.1 & 27 Nov 2026 & \SPIRAuthor & Decisions on QR scans, approval, address and ownership recorded.\\
 }
 \input{rtmcount.tex}
 \newcommand{\kpi}[3]{\begin{tikzpicture}
@@ -65,7 +66,7 @@ user administration) and \rtm{all}{O} targets are still to be agreed.
 \begin{itemize}
   \item One shared sign-in per portal (\code{admin} / \code{admin}); no personal accounts or role-based access.
   \item No review step before supplier data goes live (built earlier, archived).
-  \item QR scans and their certificates are open to anyone holding the label.
+  \item QR scans and their certificates are open to anyone holding the label (sign-in decided, not yet built).
   \item No X12 EDI or ERP integration; no production hosting, monitoring or security testing.
   \item OCR on real photos needs a tight crop and good light; accuracy not yet measured at scale.
 \end{itemize}
@@ -75,19 +76,24 @@ user administration) and \rtm{all}{O} targets are still to be agreed.
 {\small\zebra
 \begin{tabularx}{\linewidth}{@{}L{3.2cm}Y@{}}
   \thead\hd{Phase} & \hd{Outcome}\\
-  1. Accounts and control & Personal accounts, roles and company SSO; restore the approval workflow; decide on public scans.\\
+  1. Accounts and control & Personal accounts, roles and company SSO; sign-in for every QR scan; a PO match check (proposed).\\
   2. Production readiness & Permanent hosting and address, backups, monitoring, security testing, malware scanning, admin screens.\\
   3. Integration & X12 832/841 supplier messages and ERP purchase orders and receipts.\\
   4. Inspection at scale & Measured OCR accuracy, more label layouts, fixed cameras, offline capture.\\
 \end{tabularx}}
 
-\section{Decisions needed}
+\section{Decisions taken (27 November 2026)}
 \begin{enumerate}
-  \item \textbf{Public QR scans}: keep open, or require a company sign-in before production?
-  \item \textbf{Approval}: when should supplier data need company approval again, and who approves?
-  \item \textbf{Address}: the permanent web address to print in QR codes.
-  \item \textbf{Ownership}: owners and budget for Phase 1, and for risks R-01 (shared sign-in), R-02 (public scans) and
-    R-04 (credentials shared during set-up must be rotated).
+  \item \textbf{QR scans}: every scan will need a company sign-in, including the shipment details, not only the
+    certificates. Built in Phase 1; until then scans stay open and the demo uses synthetic data only.
+  \item \textbf{Approval}: instead of a person approving each shipment, SPIR would compare what the supplier entered
+    against the company's purchase order and raise an alarm on any difference (a \emph{PO match check}). This is a
+    proposal to explore, not yet a commitment; the open questions are in SPIR-SCP-001.
+  \item \textbf{Address}: GitHub Pages (\code{musman1993.github.io/spir}) for now. Labels printed on it must be
+    reprinted, or redirected, if the app moves (risk R-06).
+  \item \textbf{Ownership}: \SPIRAuthor\ is product owner and owns R-04 (rotate shared credentials, now); the Quality
+    manager is business sponsor and owns R-02 (scan access); IT owns R-01 (shared sign-in, replaced by company SSO).
+    The Phase 1 budget is still to be set by the sponsor.
 \end{enumerate}
 
 \section{Where to find more}

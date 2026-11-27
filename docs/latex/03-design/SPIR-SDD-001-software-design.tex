@@ -1,9 +1,10 @@
 \makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
 \documentclass[11pt,a4paper]{article}
 \usepackage{spirdoc}
-\SetDoc{SPIR-SDD-001}{Software Design Description}{1.0}{Issued for review}
+\SetDoc{SPIR-SDD-001}{Software Design Description}{1.1}{Issued for review}
 \Revisions{%
   1.0 & 27 Nov 2026 & \SPIRAuthor & First issue, describing the design of release \SPIRRelease.\\
+  1.1 & 27 Nov 2026 & \SPIRAuthor & ADR-11 to ADR-14 added (decisions of 27 Nov 2026, not yet built).\\
 }
 \newcommand{\ep}[4]{\code{#1} & \code{#2} & #3 & #4\\}
 
@@ -291,6 +292,10 @@ The full log is \fpath{docs/decisions.md}. The main ones:
   ADR-08 & Saves live immediately; approval workflow archived (0.5). & Stakeholder request for simplicity in this phase.\\
   ADR-09 & Public QR scans (0.5). & Stakeholder request; risk accepted in SPIR-SCP-001.\\
   ADR-10 & Form saves go through the CSV import engine. & One rule set, one test surface.\\
+  ADR-11 & Ownership: product owner M. Usman; sponsor Quality manager; sign-in and hosting IT. & Each risk needs a named owner.\\
+  ADR-12 & Sign-in for every QR scan; replaces ADR-09 (decided, Phase 1). & Shipment data and certificates are company and supplier information.\\
+  ADR-13 & Proposed: PO match check (supplier data against the purchase order, alarm on differences) instead of manual approval. & Exceptions only; receiving already checks each shipment.\\
+  ADR-14 & GitHub Pages is the QR address for now; company address before roll-out. & No company domain yet; redirect page if it moves.\\
 \end{xltabular}}
 
 \section{Technical debt}
