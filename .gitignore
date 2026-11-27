@@ -14,3 +14,16 @@ seed/output/
 seed/local/*
 !seed/local/README.md
 api/test/fixtures/local/
+
+# LaTeX build products (PDFs are built by GitHub Actions: workflow "Documentation")
+docs/latex/build/
+docs/latex/**/*.pdf
+docs/latex/**/*.aux
+docs/latex/**/*.log
+docs/latex/**/*.out
+docs/latex/**/*.toc
+docs/latex/**/*.fls
+docs/latex/**/*.fdb_latexmk
+docs/latex/**/*.synctex.gz
+docs/latex/**/*.lof
+docs/latex/**/*.lot

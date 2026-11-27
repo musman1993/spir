@@ -1,0 +1,297 @@
+% ===========================================================================
+% spirdoc.sty --- shared layout for the SPIR documentation set
+%
+% Every document in docs/latex/ loads this package. It provides:
+%   * page layout, fonts, colours (the SPIR brand palette)
+%   * a cover page and a document control page (revision history, approvals,
+%     related documents)
+%   * headers/footers with document number, version and page x of y
+%   * TikZ styles for UML and workflow diagrams (diagrams/*.tex)
+%   * callout boxes and table helpers
+%
+% Usage in a document:
+%   \makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
+%   \documentclass[11pt,a4paper]{article}
+%   \usepackage{spirdoc}
+%   \SetDoc{SPIR-SRS-001}{Software Requirements Specification}{1.0}{Approved for review}
+%   \begin{document}
+%   \MakeCover{A one-line purpose}
+%   \Revisions{1.0 & 27 Nov 2026 & M. Usman & First issue \\}
+%   \DocumentControl
+%   ...
+% ===========================================================================
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{spirdoc}[2026/11/27 SPIR documentation style]
+
+\input{project.tex}
+
+% ---- Layout and fonts ------------------------------------------------------
+\RequirePackage[a4paper,top=2.6cm,bottom=2.4cm,left=2.3cm,right=2.3cm,headheight=30pt,headsep=14pt]{geometry}
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+\RequirePackage{lmodern}
+\RequirePackage[scaled=0.93]{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\RequirePackage{microtype}
+\RequirePackage{setspace}
+\setstretch{1.12}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.55em}
+\RequirePackage{etoolbox}
+\RequirePackage{calc}
+\RequirePackage{ifthen}
+
+% ---- Colours (SPIR brand palette) ------------------------------------------
+\RequirePackage[table]{xcolor}
+\definecolor{spirblue}{HTML}{004B8D}    % primary, headings, table headers
+\definecolor{spirblueink}{HTML}{003A6E}
+\definecolor{spircyan}{HTML}{00A4D2}    % active borders, QR indicators
+\definecolor{spirlink}{HTML}{00739A}    % links (cyan family, readable on white)
+\definecolor{spirgreen}{HTML}{00AA7E}   % approved / implemented
+\definecolor{spirgreenink}{HTML}{006B50}
+\definecolor{spirlime}{HTML}{62BB46}
+\definecolor{spiramber}{HTML}{F79428}   % pending / partial
+\definecolor{spiryellow}{HTML}{FFCF22}  % draft
+\definecolor{spirbrown}{HTML}{8A4B05}   % warm callouts
+\definecolor{spirred}{HTML}{D31245}     % rejected / errors / not met
+\definecolor{spirredink}{HTML}{B00E39}
+\definecolor{spirgrey}{HTML}{959797}    % superseded / historical / not started
+\definecolor{spirgreyink}{HTML}{5C5E5E}
+\definecolor{spirink}{HTML}{13293D}
+\definecolor{spirink2}{HTML}{3E5266}
+\definecolor{spirmist}{HTML}{F4F6F9}
+\definecolor{spirwash}{HTML}{E4F5FB}
+\definecolor{spirmanila}{HTML}{FFF1DF}
+\definecolor{spirrule}{HTML}{C9DCE6}
+\color{spirink}
+
+% ---- Headings ---------------------------------------------------------------
+\RequirePackage{titlesec}
+\RequirePackage{needspace}
+\titleformat{\section}{\needspace{9\baselineskip}\Large\bfseries\color{spirblue}}{\thesection}{0.8em}{}[\vspace{2pt}{\color{spirrule}\titlerule[0.8pt]}]
+\titleformat{\subsection}{\needspace{6\baselineskip}\large\bfseries\color{spirblue}}{\thesubsection}{0.7em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\color{spirink}}{\thesubsubsection}{0.6em}{}
+\titleformat{\paragraph}[runin]{\normalsize\bfseries\color{spirink}}{}{0pt}{}[.]
+\titlespacing*{\section}{0pt}{1.6em}{0.9em}
+\titlespacing*{\subsection}{0pt}{1.3em}{0.5em}
+\titlespacing*{\subsubsection}{0pt}{1.0em}{0.3em}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+
+% ---- Lists, tables, figures --------------------------------------------------
+\RequirePackage{enumitem}
+\setlist{itemsep=0.25em,topsep=0.35em,parsep=0pt}
+\setlist[itemize]{label=\textcolor{spircyan}{\raisebox{0.15ex}{\small$\bullet$}},leftmargin=1.4em}
+\setlist[enumerate]{leftmargin=1.8em}
+\setlist[description]{font=\bfseries\color{spirink},leftmargin=1.2em}
+\RequirePackage{array}
+\RequirePackage{booktabs}
+\RequirePackage{longtable}
+\RequirePackage{tabularx}
+\RequirePackage{xltabular}
+\RequirePackage{multirow}
+\RequirePackage{pdflscape}
+\RequirePackage{csvsimple}
+\RequirePackage{caption}
+\captionsetup{font={small,color=spirink2},labelfont={bf,color=spirblue},skip=6pt}
+\RequirePackage{graphicx}
+\RequirePackage{float}
+\RequirePackage{pifont}
+\renewcommand{\arraystretch}{1.28}
+\setlength{\tabcolsep}{6pt}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+% Blue header row: \thead\hd{Column} & \hd{Column} \\
+\newcommand{\hd}[1]{\textcolor{white}{\bfseries\small #1}}
+\newcommand{\thead}{\rowcolor{spirblue}}
+\newcommand{\zebra}{\rowcolors{2}{spirmist}{white}}
+
+% ---- Status tags (traceability, roadmap, risks) -------------------------------
+\newcommand{\tagbox}[3]{\colorbox{#1}{\textcolor{#2}{\bfseries\scriptsize\strut #3}}}
+\newcommand{\Done}{\tagbox{spirgreen!18}{spirgreenink}{IMPLEMENTED}}
+\newcommand{\Partial}{\tagbox{spiramber!22}{spirbrown}{PARTIAL}}
+\newcommand{\Deferred}{\tagbox{spiryellow!35}{spirbrown}{DEFERRED}}
+\newcommand{\Deviation}{\tagbox{spirred!12}{spirredink}{DEVIATION}}
+\newcommand{\NotStarted}{\tagbox{spirgrey!20}{spirgreyink}{NOT STARTED}}
+\newcommand{\OpenItem}{\tagbox{spirgrey!20}{spirgreyink}{TO DEFINE}}
+\newcommand{\High}{\tagbox{spirred!12}{spirredink}{HIGH}}
+\newcommand{\Med}{\tagbox{spiramber!22}{spirbrown}{MEDIUM}}
+\newcommand{\Low}{\tagbox{spirgreen!18}{spirgreenink}{LOW}}
+\newcommand{\Pass}{\tagbox{spirgreen!18}{spirgreenink}{PASS}}
+\newcommand{\Skip}{\tagbox{spirgrey!20}{spirgreyink}{SKIPPED}}
+
+% ---- Inline helpers ------------------------------------------------------------
+\newcommand{\code}[1]{\texttt{\small #1}}
+% File paths: typewriter, and breakable at / - . _ so long paths wrap inside table cells.
+\RequirePackage{url}
+\def\UrlBreaks{\do\/\do\-\do\.\do\_}
+\DeclareUrlCommand\fpath{\urlstyle{tt}\color{spirink2}}
+\newcommand{\ui}[1]{\textbf{#1}}           % a label as shown on screen
+\newcommand{\req}[1]{\textsf{\bfseries\color{spirblue}#1}}
+\newcommand{\yes}{\textcolor{spirgreen}{\ding{51}}}
+\newcommand{\no}{\textcolor{spirred}{\ding{55}}}
+
+% ---- Callout boxes ---------------------------------------------------------------
+\RequirePackage[most]{tcolorbox}
+\tcbset{spirbox/.style={enhanced,breakable,boxrule=0.6pt,arc=3mm,left=10pt,right=10pt,top=7pt,bottom=7pt,fonttitle=\bfseries\small,coltitle=spirink}}
+\newtcolorbox{keypoint}[1][Key point]{spirbox,colback=spirwash,colframe=spircyan!60,title={#1},colbacktitle=spirwash,attach title to upper={\par\smallskip}}
+\newtcolorbox{caution}[1][Limitation]{spirbox,colback=spirmanila,colframe=spiramber!70,title={#1},colbacktitle=spirmanila,attach title to upper={\par\smallskip}}
+\newtcolorbox{warningbox}[1][Important]{spirbox,colback=spirred!5,colframe=spirred!55,title={#1},colbacktitle=spirred!5,attach title to upper={\par\smallskip}}
+\newtcolorbox{commandbox}{spirbox,colback=spirmist,colframe=spirrule,fontupper=\ttfamily\footnotesize,left=8pt}
+
+% ---- Code listings ---------------------------------------------------------------
+\RequirePackage{listings}
+\lstset{basicstyle=\ttfamily\small,columns=fullflexible,keepspaces=true,breaklines=true,
+  backgroundcolor=\color{spirmist},frame=single,rulecolor=\color{spirrule},framesep=6pt,xleftmargin=6pt,xrightmargin=6pt,
+  keywordstyle=\color{spirblue}\bfseries,commentstyle=\color{spirgreyink},stringstyle=\color{spirbrown},showstringspaces=false}
+
+% ---- TikZ: diagrams ----------------------------------------------------------------
+\RequirePackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,shapes.multipart,shapes.misc,fit,calc,backgrounds,matrix,decorations.pathreplacing,shadows}
+\tikzset{
+  >={Stealth[length=2.4mm]},
+  every node/.style={font=\sffamily\small,text=spirink,execute at begin node={\hyphenpenalty=10000\exhyphenpenalty=10000}},
+  % generic blocks
+  box/.style={draw=spirblue,line width=0.7pt,rounded corners=3pt,fill=white,align=center,inner sep=5pt,minimum height=8mm},
+  softbox/.style={box,fill=spirwash,draw=spircyan},
+  darkbox/.style={box,fill=spirblue,draw=spirblue,text=white,font=\sffamily\small\bfseries},
+  ext/.style={box,dashed,draw=spirgreyink,text=spirgreyink},
+  store/.style={cylinder,shape border rotate=90,aspect=0.22,draw=spirblue,fill=spirwash,line width=0.7pt,align=center,minimum width=24mm,minimum height=13mm},
+  group/.style={draw=spirrule,line width=0.8pt,rounded corners=6pt,fill=spirmist,inner sep=8pt},
+  grouplabel/.style={font=\sffamily\scriptsize\bfseries,text=spirink2,anchor=north west},
+  flow/.style={->,draw=spirink2,line width=0.7pt},
+  dflow/.style={->,draw=spirink2,line width=0.7pt,dashed},
+  lbl/.style={font=\sffamily\scriptsize,text=spirink2,fill=white,inner sep=1.5pt},
+  % UML
+  actor/.pic={\draw[spirink,line width=0.8pt] (0,0.42) circle (0.16) (0,0.26)--(0,-0.12) (-0.26,0.14)--(0.26,0.14) (0,-0.12)--(-0.2,-0.46) (0,-0.12)--(0.2,-0.46);},
+  usecase/.style={ellipse,draw=spirblue,fill=white,line width=0.7pt,align=center,inner sep=2pt,minimum height=9mm,font=\sffamily\footnotesize},
+  usecaseoff/.style={usecase,dashed,draw=spirgrey,text=spirgreyink},
+  umlclass/.style={rectangle split,rectangle split parts=2,draw=spirblue,line width=0.7pt,fill=white,align=left,font=\sffamily\scriptsize,inner sep=3pt,rectangle split part fill={spirwash,white}},
+  state/.style={rounded corners=7pt,draw=spirblue,fill=white,line width=0.8pt,minimum width=24mm,minimum height=9mm,align=center,font=\sffamily\small\bfseries},
+  stateoff/.style={state,dashed,draw=spirgrey,text=spirgreyink,fill=spirmist},
+  initial/.style={circle,fill=spirink,minimum size=3.2mm,inner sep=0pt},
+  final/.style={circle,draw=spirink,line width=0.8pt,fill=white,minimum size=4.2mm,inner sep=0pt,path picture={\fill[spirink] (path picture bounding box.center) circle (1.2mm);}},
+  activity/.style={rounded corners=7pt,draw=spirblue,fill=white,line width=0.7pt,align=center,inner sep=4pt,minimum height=8mm,text width=#1},
+  activity/.default=34mm,
+  decision/.style={diamond,aspect=1.8,draw=spiramber,fill=spirmanila,line width=0.7pt,align=center,inner sep=1pt,font=\sffamily\scriptsize},
+  note/.style={draw=spiramber!80,fill=spirmanila,align=left,font=\sffamily\scriptsize,inner sep=4pt,text width=#1},
+  note/.default=40mm,
+  % sequence diagrams
+  lifehead/.style={box,minimum width=24mm,font=\sffamily\scriptsize\bfseries},
+  lifeline/.style={draw=spirgrey,dashed,line width=0.6pt},
+  msg/.style={->,draw=spirink,line width=0.7pt},
+  reply/.style={->,draw=spirink2,dashed,line width=0.6pt},
+  msglbl/.style={font=\sffamily\scriptsize,text=spirink,fill=white,inner sep=1pt,above},
+  activation/.style={draw=spirblue,fill=spirwash,line width=0.6pt},
+}
+
+% \Diagram[max height as fraction of \textheight]{diagram file}{caption}
+\RequirePackage{adjustbox}
+\newcommand{\Diagram}[3][0.62]{%
+  \begin{figure}[H]\centering
+  \adjustbox{max width=\linewidth,max totalheight=#1\textheight}{\input{#2.tex}}
+  \caption{#3}\label{fig:#2}
+  \end{figure}}
+
+% ---- Hyperlinks ------------------------------------------------------------------
+\RequirePackage[hidelinks,bookmarksnumbered,pdfusetitle]{hyperref}
+\hypersetup{colorlinks=true,linkcolor=spirlink,urlcolor=spirlink,citecolor=spirlink}
+\RequirePackage{lastpage}
+\urlstyle{sf}
+
+% ---- Document metadata -----------------------------------------------------------
+\newcommand{\DocNumber}{}
+\newcommand{\DocTitle}{}
+\newcommand{\DocVersion}{}
+\newcommand{\DocStatus}{}
+% \SetDoc{number}{title}{document version}{status}
+\newcommand{\SetDoc}[4]{%
+  \renewcommand{\DocNumber}{#1}\renewcommand{\DocTitle}{#2}%
+  \renewcommand{\DocVersion}{#3}\renewcommand{\DocStatus}{#4}%
+  \hypersetup{pdftitle={#1 #2},pdfauthor={\SPIRAuthor},pdfsubject={\SPIRProduct}}}
+
+% ---- Header / footer --------------------------------------------------------------
+\RequirePackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyhead[L]{\footnotesize\color{spirink2}\textbf{\color{spirblue}\DocNumber}\quad\DocTitle}
+\fancyhead[R]{\footnotesize\color{spirink2}SPIR release \SPIRRelease}
+\fancyfoot[L]{\scriptsize\color{spirgreyink}\SPIRClassification}
+\fancyfoot[C]{\scriptsize\color{spirgreyink}Document version \DocVersion}
+\fancyfoot[R]{\scriptsize\color{spirgreyink}Page \thepage\ of \pageref*{LastPage}}
+\fancypagestyle{plain}{\fancyhf{}\fancyfoot[R]{\scriptsize\color{spirgreyink}Page \thepage\ of \pageref*{LastPage}}}
+
+% ---- Cover --------------------------------------------------------------------------
+% The SPIR hang-tag mark. \SPIRMarkPath draws it at the origin (2cm tall) inside any picture.
+\newcommand{\SPIRMarkPath}{%
+  \draw[spiramber,line width=1.6pt,fill=spirmanila,rounded corners=1.5pt] (0.25,0)--(1.25,0)--(1.75,0.5)--(1.75,2.05)--(0.25,2.05)--cycle;
+  \draw[spirblue,line width=1.4pt] (1.0,1.55) circle (0.19);
+  \draw[spirblue,line width=1.6pt,line cap=round] (0.62,1.0)--(1.38,1.0) (0.62,0.62)--(1.38,0.62);}
+\newcommand{\SPIRMark}[1][1]{\begin{tikzpicture}[scale=#1]\SPIRMarkPath\end{tikzpicture}}
+
+% \MakeCover{purpose line}
+\newcommand{\MakeCover}[1]{%
+  \begin{titlepage}
+  \thispagestyle{empty}
+  \begin{tikzpicture}[remember picture,overlay]
+    \fill[spirblue] (current page.north west) rectangle ([yshift=-7cm]current page.north east);
+    \fill[spirmist] ([yshift=-7cm]current page.north west) rectangle (current page.south east);
+    \fill[spiramber] ([yshift=-7cm]current page.north west) rectangle ([yshift=-7.18cm]current page.north east);
+    \begin{scope}[shift={([xshift=2.3cm,yshift=-3.55cm]current page.north west)},scale=0.85]\SPIRMarkPath\end{scope}
+    \node[anchor=west,text=white,font=\sffamily\bfseries\fontsize{30}{34}\selectfont] at ([xshift=4.3cm,yshift=-2.35cm]current page.north west) {SPIR};
+    \node[anchor=west,text=white!82!spircyan,font=\sffamily\large] at ([xshift=4.3cm,yshift=-3.25cm]current page.north west) {Supplier Product Information Registry};
+    \node[anchor=west,text=white!78!spircyan,font=\sffamily\small] at ([xshift=2.3cm,yshift=-5.5cm]current page.north west) {\SPIRProject\quad|\quad Software release \SPIRRelease\quad|\quad \SPIRReleaseDate};
+  \end{tikzpicture}%
+  \par\vspace*{5.6cm}%
+  \begin{minipage}{\linewidth}
+  {\color{spirblue}\sffamily\bfseries\fontsize{28}{34}\selectfont \DocTitle\par}
+  \vspace{0.5cm}
+  {\large\color{spirink2} #1\par}
+  \end{minipage}
+  \par\vspace{1.4cm}
+  {\small
+  \renewcommand{\arraystretch}{1.55}
+  \begin{tabular}{@{}>{\color{spirink2}}l@{\hspace{1.2cm}}l@{}}
+    Document number & \textbf{\DocNumber}\\
+    Document version & \DocVersion\\
+    Software release & \SPIRRelease\\
+    Date & \SPIRReleaseDate\\
+    Status & \DocStatus\\
+    Prepared by & \SPIRAuthor\\
+    Classification & \SPIRClassification\\
+    Source & \href{\SPIRRepoURL}{\SPIRRepo}\ \ (\fpath{docs/latex/})\\
+  \end{tabular}}
+  \vfill
+  {\footnotesize\color{spirgreyink} This document is maintained as LaTeX source next to the code. Change it in the same pull
+  request as the code it describes; the GitHub Action \fpath{docs.yml} rebuilds every PDF on each change.\par}
+  \end{titlepage}
+  \setcounter{page}{2}}
+
+% ---- Document control ------------------------------------------------------------
+\newcommand{\RevisionRows}{}
+% \Revisions{ version & date & author & change \\ ... }
+\newcommand{\Revisions}[1]{\gdef\RevisionRows{#1}}
+
+\newcommand{\DocumentControl}{%
+  \section*{Document control}
+  \addcontentsline{toc}{section}{Document control}
+  \subsection*{Revision history}
+  {\small\zebra
+  \begin{tabularx}{\linewidth}{@{}L{1.5cm}L{2.4cm}L{2.6cm}Y@{}}
+    \thead\hd{Version} & \hd{Date} & \hd{Author} & \hd{Change}\\
+    \RevisionRows
+  \end{tabularx}}
+  \subsection*{Review and approval}
+  {\small\zebra
+  \begin{tabularx}{\linewidth}{@{}L{3.6cm}L{4.2cm}Y@{}}
+    \thead\hd{Role} & \hd{Name} & \hd{Decision and date}\\
+    Author & \SPIRAuthor & Prepared, \SPIRReleaseDate\\
+    Technical reviewer & To be assigned & \\
+    Business owner & To be assigned & \\
+  \end{tabularx}}
+  \subsection*{Documentation set}
+  \input{related.tex}
+  \clearpage}
+
+\endinput

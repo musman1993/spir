@@ -1,0 +1,204 @@
+\makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
+\documentclass[11pt,a4paper]{article}
+\usepackage{spirdoc}
+\SetDoc{SPIR-TST-001}{Test Plan and Report}{1.0}{Issued for review}
+\Revisions{%
+  1.0 & 27 Nov 2026 & \SPIRAuthor & First issue: test approach and results for release \SPIRRelease.\\
+}
+% \tc{ID}{test}{covers}
+\newcommand{\tc}[3]{#1 & #2 & #3 & \Pass\\}
+\newenvironment{testcases}{\par\footnotesize\zebra\xltabular{\linewidth}{@{}L{1.25cm}Y L{3.3cm}L{1.5cm}@{}}
+  \thead\hd{ID} & \hd{Test} & \hd{Covers} & \hd{Result}\\\endhead}{\endxltabular}
+
+\begin{document}
+\MakeCover{How SPIR is tested, what was tested for release \SPIRRelease, the results, and the gaps that remain.}
+\DocumentControl
+\tableofcontents
+\clearpage
+
+\section{Summary}
+\begin{keypoint}[Result for release \SPIRRelease]
+\textbf{63 of 63 automated tests pass} (27 November 2026, 14.8\,s). In GitHub Actions the private real-photo test is
+skipped because its files are not in the repository: 62 pass, 1 skipped. Typecheck and production build pass.
+Browser walk-throughs of both portals, the public scan page and the QR print sheets passed on desktop and phone sizes.
+\end{keypoint}
+
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{4.6cm}L{1.4cm}L{1.4cm}Y@{}}
+  \thead\hd{Suite} & \hd{Tests} & \hd{Passed} & \hd{Scope}\\
+  \fpath{api/test/domain.test.ts} & 22 & 22 & Normalization, extraction, field comparison, overall status (pure functions).\\
+  \fpath{api/test/api.test.ts} & 25 & 25 & Seed import, isolation, QR, documents, audit, label-check matrix, golden OCR corpus (6).\\
+  \fpath{api/test/portals.test.ts} & 15 & 15 & Sign-in, portal separation, profile, CSV import, form, certificates, public scan.\\
+  \fpath{api/test/private-corpus.test.ts} & 1 & 1 & Real label photos (git-ignored; skipped in CI).\\
+  \rowcolor{spirwash}\textbf{Total} & \textbf{63} & \textbf{63} & \\
+\end{tabularx}}
+
+\section{Test approach}
+\subsection{Levels}
+\begin{description}
+  \item[Unit] The label-validation engine is pure TypeScript with no I/O; every comparison method and policy rule has
+    direct tests.
+  \item[API integration] The whole Hono application runs in-process against \textbf{PGlite} (Postgres compiled to
+    WebAssembly) with the real migrations and the real seed CSV, an in-memory object store and real portal sessions.
+    Requests go through routing, authentication, validation and SQL exactly as in production.
+  \item[Golden corpus] The real Tesseract.js and ZXing output for six synthetic label photos (\fpath{seed/labels/}) is
+    stored as fixtures, so OCR behaviour is regression-tested without running OCR in CI.
+  \item[Private corpus] The same check for real label photos, stored only on the developer machine (git-ignored).
+  \item[Browser] Headless Chrome (Playwright) walk-throughs of the user journeys, with screenshots reviewed at
+    1440\,px and 390\,px wide.
+  \item[QR decoding] Printed sheets rendered to PDF and decoded by two independent decoders (OpenCV, zxing-cpp)
+    under simulated phone conditions (low resolution, blur, noise, tilt, dim light).
+\end{description}
+
+\subsection{Environment}
+Node 24, Vitest 3, PGlite 0.4; Chrome headless; Python 3 with OpenCV and zxing-cpp for QR measurement. CI: GitHub
+Actions \fpath{ci.yml} on every push and pull request (typecheck, API tests, web build).
+
+\subsection{Entry and exit criteria}
+Entry: code compiles; migrations apply to an empty database. Exit: all automated tests pass, typecheck and build pass,
+no open defect of severity high, browser walk-through of changed journeys reviewed.
+
+% =====================================================================================
+\section{Automated test cases}
+\subsection{Portals and sign-in}
+\begin{testcases}
+  \tc{TC-01}{admin/admin signs in to each portal; wrong password or username refused.}{SPIR-FR-PT-01/02}
+  \tc{TC-02}{A forged session token (payload changed, old signature) is rejected.}{SPIR-FR-PT-03}
+  \tc{TC-03}{Company cannot import or list QR labels; supplier cannot run label checks or list suppliers.}{SPIR-FR-PT-04}
+  \tc{TC-04}{API requires sign-in except for QR scans.}{SPIR-FR-PS-01}
+\end{testcases}
+\subsection{Supplier profile and isolation}
+\begin{testcases}
+  \tc{TC-05}{Shipments refused until the profile exists (message mentions the profile).}{SPIR-FR-SP-02}
+  \tc{TC-06}{Profile creates the supplier (SUP code), stores contacts, rejects a bad e-mail.}{SPIR-FR-SP-01}
+  \tc{TC-07}{Supplier portal sees only its own products and records; others answer 404.}{\req{FR-SUP-004}}
+  \tc{TC-08}{Company portal sees all 11 demo records; search by PO returns both lines.}{SPIR-FR-CS-02}
+\end{testcases}
+\subsection{Shipments, CSV and versions}
+\begin{testcases}
+  \tc{TC-09}{CSV creates records and one QR code each, under the profile supplier; a supplier\_name column is ignored.}{SPIR-FR-SH-03, SP-03}
+  \tc{TC-10}{A changed CSV row creates version 2 behind the same QR code.}{SPIR-FR-SH-05, QR-03}
+  \tc{TC-11}{A CSV with errors is rejected as a whole, each problem listed by row.}{SPIR-FR-SH-04}
+  \tc{TC-12}{The CSV template has no supplier columns.}{SPIR-FR-SH-03}
+  \tc{TC-13}{The form adds a shipment with its QR code; blank heat entries are dropped.}{SPIR-FR-SH-01}
+  \tc{TC-14}{The form explains invalid quantity and missing heat numbers.}{SPIR-FR-SH-02}
+  \tc{TC-15}{Edit creates version 2 (version 1 SUPERSEDED); part, PO and line stay fixed; identical save changes nothing.}{SPIR-FR-SH-06, VR-01/02}
+  \tc{TC-16}{Seed: repeated traceability\_ref becomes the live version, the earlier one superseded.}{SPIR-FR-VR-01}
+  \tc{TC-17}{Retired CSV columns are rejected with a clear message.}{BR-08}
+  \tc{TC-18}{Seed creates suppliers, products, versions, documents and 11 QR tokens.}{\req{FR-QR-001}}
+\end{testcases}
+\subsection{QR codes, scans and certificates}
+\begin{testcases}
+  \tc{TC-19}{Anonymous scan shows the live version without history; no-store caching; unknown token 404.}{SPIR-FR-PS-01/03}
+  \tc{TC-20}{Supplier replaces a label: old token 410, new token resolves to the same record; company cannot rotate.}{SPIR-FR-QR-07}
+  \tc{TC-21}{Signed-in download: 300 s link, PDF served, forged signature 403.}{SPIR-FR-DC-02}
+  \tc{TC-22}{Public download through the scanned token works; another record's document is refused.}{SPIR-FR-PS-02}
+  \tc{TC-23}{Certificates attach to the live version and appear on a scan.}{SPIR-FR-DC-01}
+  \tc{TC-24}{Company finds a new shipment by heat number.}{SPIR-FR-CS-02}
+\end{testcases}
+\subsection{Integrity and audit}
+\begin{testcases}
+  \tc{TC-25}{Updating an approved version fails (immutable); deleting audit events fails (append-only); QR issue audited.}{SPIR-FR-VR-03, AU-02}
+\end{testcases}
+\subsection{Label check}
+\begin{testcases}
+  \tc{TC-26}{Correct supplier label resolves by part number + PO and passes.}{SPIR-FR-LC-04/05}
+  \tc{TC-27}{Company receiving label resolves but cannot confirm supplier or heat (needs review).}{SPIR-FR-LC-05}
+  \tc{TC-28}{OCR-damaged field names and a bare PO barcode still work.}{SPIR-FR-LC-03}
+  \tc{TC-29}{An OCR misread is flagged; operator correction kept separately from raw OCR.}{SPIR-FR-LC-07}
+  \tc{TC-30}{Wrong heat or quantity fails; a discrepancy never changes registry data.}{SPIR-FR-LC-08}
+  \tc{TC-31}{Low confidence: long exact identifiers match, short values need a human.}{SPIR-FR-LC-06}
+  \tc{TC-32}{A SPIR QR on the label resolves directly; the image is stored as evidence.}{\req{FR-OCR-001}}
+  \tc{TC-33}{A part number alone is ambiguous; the PO line picks between lines.}{SPIR-FR-LC-04}
+  \tc{TC-34}{Only the company portal can run label checks (anonymous 401, supplier 403).}{SPIR-FR-PT-04}
+  \tc{TC-35}{Domain: identifier punctuation, dates, code aliases, 8/B confusion, mismatch, low confidence, junk and cut-off reads, missing cases, decimal tolerance (11 tests).}{SPIR-FR-LC-05/06}
+  \tc{TC-36}{Domain: overall policy, quantity 02/02 and lost slash, PO line formats, company names, descriptions, dates, extraction, QR and barcode decoding (11 tests).}{SPIR-FR-LC-03/05}
+\end{testcases}
+
+\subsection{Golden OCR corpus}
+Real Tesseract.js and ZXing output for synthetic photos in the layouts of the real labels.
+
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}Y L{3.3cm}L{3.3cm}L{1.3cm}@{}}
+  \thead\hd{Photo} & \hd{Expected} & \hd{Key fields} & \hd{Result}\\
+  \fpath{supplier-label-fcf-t001-correct} & PASS & all match & \Pass\\
+  \fpath{supplier-label-fcf-t001-wrong-quantity} & FAIL & quantity MISMATCH & \Pass\\
+  \fpath{supplier-label-fcf-t003-quantity-only-in-pending-version} & PASS\textsuperscript{*} & quantity, heat MATCH & \Pass\\
+  \fpath{receiving-label-fcf-t002} & NEEDS\_REVIEW & supplier, heat not on label & \Pass\\
+  \fpath{supplier-label-dac-t001-angled-blurry} & NEEDS\_REVIEW & low confidence & \Pass\\
+  \fpath{supplier-label-nhg-t001-with-rt-and-pattern} & PASS\_WITH\_\allowbreak WARNINGS & RT and pattern read & \Pass\\
+\end{tabularx}}
+{\footnotesize\textsuperscript{*} Was FAIL before release 0.5, when the label's quantity existed only in a pending
+version. Saves are now live, so the label matches.\par}
+
+% =====================================================================================
+\section{QR label decoding tests (release 0.3)}
+Printed sheets were rendered at 300\,dpi; each label was cut out and degraded to imitate a phone capture, then decoded
+with zxing-cpp. Same printed size (32\,mm), Codespace-length link.
+
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}Y L{2.8cm}L{2.8cm}@{}}
+  \thead\hd{Camera pixels across the code} & \hd{Old code (v0.2)} & \hd{New code with logo}\\
+  220 px (good) & 20 / 20 & 20 / 20\\
+  180 px (fair) & 20 / 20 & 20 / 20\\
+  150 px (far or blurry) & 13 / 20 & \textbf{20 / 20}\\
+\end{tabularx}}
+The 8-per-sheet layout (54\,mm code) decoded in every condition tested. Every printed code is also decoded in the
+browser before printing (scan check).
+
+\section{Real photo results (release 0.2)}
+Three real phone photos of receiving and supplier labels were tested (private corpus, data not in the repository).
+
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{2.4cm}Y L{3cm}@{}}
+  \thead\hd{Photo} & \hd{Observation} & \hd{Outcome}\\
+  Full frame & Tesseract word confidence 26--35\,\%; most fields unreadable. & Not usable without crop.\\
+  Photo 2 (cropped, 3× upscale) & Part, PO and heat read; quantity and line needed review. & Resolved correctly, NEEDS\_REVIEW.\\
+  Photos 1 and 3 & Glare and a stamp over fields. & UNRESOLVED (correct behaviour: no false match).\\
+\end{tabularx}}
+Conclusion: the crop tool and upscaling are essential; original-resolution photos and even light are needed; the
+engine never produced a false match on real photos.
+
+\section{Browser walk-throughs (release 0.5)}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}Y L{2cm}@{}}
+  \thead\hd{Journey} & \hd{Result}\\\endhead
+  Supplier: wrong password message; sign-in; profile set-up on an empty registry; overview. & \Pass\\
+  Supplier: form with invalid quantity shows the field error; corrected save creates shipment and QR label. & \Pass\\
+  Supplier: printable label, edit to version 2, success messages. & \Pass\\
+  Public: scan link on a 390 px phone screen shows shipment and certificate buttons without sign-in. & \Pass\\
+  Company: sign-in, scanner page, search by heat, scanned shipment inside the portal. & \Pass\\
+  Both portals signed in within one browser stay separate; signing out of one leaves the other signed in. & \Pass\ (after fix)\\
+  QR labels: sheet preview, scan check status, print to PDF for 8/14/21 layouts. & \Pass\\
+\end{xltabular}}
+
+\section{Defects found and fixed}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{1.3cm}Y L{1.6cm}@{}}
+  \thead\hd{ID} & \hd{Defect} & \hd{Fixed in}\\\endhead
+  DF-01 & Phone cameras could not detect QR codes (thin border, distorted squares, long link). & 0.3.0\\
+  DF-02 & Heat numbers broke at the hyphen on narrow labels. & 0.3.0\\
+  DF-03 & Menu button visible on desktop; home cards misaligned. & 0.4.0\\
+  DF-04 & Placeholder \code{DATABASE\_URL} produced a confusing network error. & 0.4.1\\
+  DF-05 & With both portals open in one browser, the supplier page showed the company account. & 0.5.0\\
+  DF-06 & ``required'' tags wrapped to their own line; two menu items highlighted at once. & 0.5.0\\
+\end{xltabular}}
+
+\section{Gaps and recommendations}
+\begin{itemize}
+  \item No automated browser (end-to-end) tests in CI; the walk-throughs are manual scripts. Add Playwright to CI.
+  \item No security testing (dependency audit, SAST, DAST, penetration test) --- required before production.
+  \item No load or performance tests; targets are not yet agreed (NFR-PERF-001).
+  \item OCR accuracy measured on 6 synthetic and 3 real photos only; build a labelled set of 100+ real labels and report
+    per-field precision and recall (NFR-OCR-001).
+  \item No accessibility audit with assistive technology.
+\end{itemize}
+
+\section{How to run the tests}
+\begin{commandbox}
+npm install\\
+npm test\qquad\qquad\# all API tests (PGlite, real seed CSV)\\
+npm run typecheck\\
+npm run build
+\end{commandbox}
+\end{document}

@@ -1,0 +1,12 @@
+% UML state machine of a QR token.
+\begin{tikzpicture}[node distance=12mm and 26mm]
+  \node[initial] (i) {};
+  \node[state,right=18mm of i] (ac) {ACTIVE\\[-1pt]\mdseries\scriptsize scan shows the record};
+  \node[state,right=30mm of ac,fill=spirred!6,draw=spirred] (rv) {REVOKED\\[-1pt]\mdseries\scriptsize scan answers 410};
+  \node[final,right=14mm of rv] (f) {};
+  \draw[flow] (i) -- node[lbl,above=1pt,align=center]{first save of a\\shipment} (ac);
+  \draw[flow] (ac) -- node[lbl,above=1pt]{revoke (reason)} (rv);
+  \draw[flow] (ac.south) to[out=-60,in=-120,looseness=1.2] node[lbl,below,align=center]{replace label (rotate): this token is revoked and\\a new ACTIVE token is issued for the same record} (rv.south);
+  \draw[flow] (rv) -- (f);
+  \node[note=60mm,anchor=north west] at ([yshift=-34mm]i.south west) {One ACTIVE token per record (unique index). The QR holds only a random 16-character token. The database keeps its SHA-256 for lookup and an AES-256-GCM copy so the label can be printed again. An unknown token answers 404.};
+\end{tikzpicture}

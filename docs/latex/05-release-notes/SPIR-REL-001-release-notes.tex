@@ -1,0 +1,169 @@
+\makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
+\documentclass[11pt,a4paper]{article}
+\usepackage{spirdoc}
+\SetDoc{SPIR-REL-001}{Release Notes and Revision History}{1.0}{Issued for review}
+\Revisions{%
+  1.0 & 27 Nov 2026 & \SPIRAuthor & First issue, covering releases 0.1.0 to \SPIRRelease.\\
+}
+\newcommand{\release}[3]{\subsection*{Release #1\hfill{\normalsize\mdseries\color{spirink2}#2}}\addcontentsline{toc}{subsection}{Release #1}{\small\color{spirink2}Commits: #3}\par}
+\newcommand{\commit}[1]{\code{#1}}
+
+\begin{document}
+\MakeCover{What changed in each release of SPIR, why it changed, and what it means for users and for the next phase.}
+\DocumentControl
+\tableofcontents
+\clearpage
+
+\section{Overview}
+SPIR was built in five releases between 25 and 26 November 2026, each answering feedback from the previous one.
+Version numbers follow semantic versioning (\code{major.minor.patch}); the commit IDs refer to the
+\href{\SPIRRepoURL}{\SPIRRepo} repository, branch \code{main}.
+
+\Diagram[0.3]{release-timeline}{Release timeline.}
+
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{1.6cm}L{2.2cm}Y@{}}
+  \thead\hd{Release} & \hd{Date} & \hd{Theme}\\
+  0.1.0 & 25 Nov 2026 & Complete proof of concept from spec v1.1: registry, approval workflow, QR resolution, label OCR check, demo roles.\\
+  0.1.1 & 26 Nov 2026 & Codespaces start-up fix.\\
+  0.2.0 & 26 Nov 2026 & Parts identified the way real receiving labels do; open mode with CSV import, QR labels and scanning.\\
+  0.3.0 & 26 Nov 2026 & QR labels that phone cameras read reliably; company logo; A4 sticker sheets.\\
+  0.4.0 & 26 Nov 2026 & Approved cozy-glass visual design and brand palette.\\
+  0.4.1 & 26 Nov 2026 & Database set-up helpers.\\
+  \textbf{0.5.0} & 26 Nov 2026 & \textbf{Two portals (supplier, company) with sign-in; roles reduced to two; saves live at once; QR scans open to anyone.}\\
+\end{tabularx}}
+
+\section{Releases}
+
+% ------------------------------------------------------------------------------------------
+\release{0.5.0 --- Two portals}{26 November 2026}{\commit{05c8a8d}}
+\paragraph{Why} The stakeholder asked for a supplier page to log in, enter product data and generate QR codes; a
+company page to scan QR codes and see the information; and only two roles for now, with role-based access to follow.
+
+\paragraph{What changed}
+\begin{itemize}
+  \item \textbf{Supplier portal} at \code{/\#/supplier} and \textbf{company portal} at \code{/\#/company}, each with
+    its own sign-in. Both use \code{admin} / \code{admin} in this phase.
+  \item \textbf{Supplier profile}: the supplier account belongs to one supplier, set once on the Profile page. Every
+    shipment and QR label carries that name. A supplier column in a CSV is ignored.
+  \item \textbf{Shipment form} to add or edit one shipment, with field-level messages. It goes through the same engine
+    as the CSV import, so both follow identical rules. Part number, PO and line identify a shipment and its QR code and
+    cannot change in an edit.
+  \item \textbf{Saves are live immediately}: no draft or review step. A changed save adds a new version under the same
+    QR code; the previous version is kept as SUPERSEDED.
+  \item \textbf{Certificates} can be uploaded at any time to the live version of a shipment.
+  \item \textbf{QR scans open to anyone}: a phone camera opens a public page with the shipment and large certificate
+    buttons, no sign-in. A scanned token only opens its own record's certificates; lookups are rate limited.
+  \item \textbf{Company portal}: QR scanner, search across all suppliers (PO, part, heat, record), label photo check and
+    its history.
+  \item \textbf{Removed}: role switcher, review queue, approval workflow, open mode, products / audit / settings screens.
+    The previous design is kept on branch \code{archive/roles-and-review}. Old user accounts stay in the database,
+    inactive, because history points at them.
+  \item Database migration \code{006\_two\_portals.sql}: roles SUPPLIER and COMPANY, accounts \code{supplier-admin} and
+    \code{company-admin}, supplier contact fields.
+  \item Sessions are HMAC-signed tokens valid for 12 hours. The web app keeps one token per portal and chooses it from
+    the address, so the two portals never mix in one browser (a defect found and fixed during testing).
+  \item Tests rewritten around the portals: 63 automated tests pass.
+\end{itemize}
+\paragraph{Impact} Requirements \req{FR-WF-001}--\req{FR-WF-006} and \req{FR-WF-009} move to \emph{deferred};
+\req{FR-QR-003} and \req{FR-DOC-005} become deliberate deviations (see SPIR-RTM-001 and SPIR-SCP-001). In the demo data, a
+shipment that had a pending correction now shows the corrected values.
+
+% ------------------------------------------------------------------------------------------
+\release{0.4.1 --- Database set-up helpers}{26 November 2026}{\commit{0797b99}, \commit{c0ab908}}
+\begin{itemize}
+  \item The \code{db:*} scripts explain a missing or placeholder \code{DATABASE\_URL} in plain words instead of failing
+    with a network error (\code{getaddrinfo ENOTFOUND HOST}).
+  \item \code{npm run db:connect}: paste the Neon connection string at a hidden prompt; it is tested and written to
+    \code{.env}. Nothing is written if the connection fails.
+  \item The example uses \code{sslmode=verify-full}, which removes the driver's SSL warning.
+\end{itemize}
+
+% ------------------------------------------------------------------------------------------
+\release{0.4.0 --- Cozy glass visual system}{26 November 2026}{\commit{dba8a2b}}
+\paragraph{Why} The stakeholder specified a hybrid glassmorphic design. Mockups were made and reviewed first, then
+the colour palette and glass treatment were applied to the application.
+\begin{itemize}
+  \item Deep-blue glass navigation rail (\code{rgba(0,75,141,.92)}, blur 18\,px) over a warm mist canvas
+    (\code{\#F4F6F9}) with faint amber and sky-cyan washes.
+  \item Frosted white cards, tables and panels (\code{rgba(255,255,255,.78)}, blur 14\,px, 18\,px corners); brand-blue
+    table header rows and primary buttons.
+  \item Brand status colours with readable text: APPROVED green, PENDING amber, DRAFT yellow, REJECTED red,
+    SUPERSEDED grey. Colours too light for small text colour the dot or border, and a darker shade of the same hue
+    carries the words (4.5:1 contrast).
+  \item Figtree interface font, IBM Plex Mono for identifiers; warm amber hang tag and brand mark.
+  \item Prints on plain white; a fallback for browsers without backdrop blur.
+  \item Fixed: a Menu button showing on desktop; misaligned cards on the home page.
+\end{itemize}
+
+% ------------------------------------------------------------------------------------------
+\release{0.3.0 --- QR labels that phone cameras read}{26 November 2026}{\commit{d312f55}}
+\paragraph{Why} Users reported that phone cameras could not detect the printed QR codes, and asked for codes
+personalised for the company.
+\paragraph{Root causes found} images scaled down with pixel doubling (distorted squares), a 1-module white border
+(the standard asks for 4), small codes on screen, and long links (Codespace address plus a 43-character token).
+\begin{itemize}
+  \item Tokens shortened to 16 characters of Crockford base32 (80 random bits). Older tokens still resolve.
+  \item Error correction chosen per code (strongest level that does not add squares); vector SVG output; white border of
+    at least 4 modules including the label padding.
+  \item Company logo in a grid-aligned cut-out in the centre of the code (\fpath{web/public/brand/logo.png} or
+    \fpath{logo.svg}). Every code is decoded again with ZXing after drawing; if the logo gets in the way it is
+    shrunk or left out, and the page says so.
+  \item A4 sticker sheets: 8 (99.1\,×\,67.7\,mm, Avery L7165), 14 (L7163) or 21 (L7160) per sheet, start position for
+    part-used sheets, printer alignment offset, outlines for test prints; 300\,dpi PNG per label.
+  \item The label shows Part \#, PO \# with line and Heat \#, as requested.
+\end{itemize}
+\paragraph{Measured result} At the smallest label size with a Codespace-length link and a blurred, tilted capture,
+decoding went from 13 of 20 (old codes) to 20 of 20 (new codes with logo).
+
+% ------------------------------------------------------------------------------------------
+\release{0.2.0 --- Real receiving labels; open mode}{26 November 2026}{\commit{8340c74}, \commit{9ee6eac}}
+\paragraph{Identification fields (\commit{8340c74})} From photos of real company receiving labels and supplier labels:
+\begin{itemize}
+  \item Mandatory: part number (company item number), purchase order number and PO line, heat number, quantity,
+    pattern number, supplier. Optional: radiographic test number, part description, material, design revision.
+  \item \code{02/02} on a label means piece 2 of a quantity of 2; ``Rev:E'' is the design revision; ``LINE 4'' the PO line.
+  \item New attribute set and label profile \code{RECEIVING\_LABELS v1} (aliases for both label types, patterns,
+    fallbacks); comparison rules \code{compare-v2}, record resolver \code{resolver-v2}.
+  \item Crop tool and automatic upscaling for photos; golden test corpus of real Tesseract and ZXing output; a private,
+    git-ignored corpus for real photos.
+\end{itemize}
+\paragraph{Open mode (\commit{9ee6eac})} The stakeholder asked to remove all actors for now: import product data from a
+CSV, generate QR codes first, and scan them to retrieve the information.
+\begin{itemize}
+  \item No sign-in; one generic operator. Import CSV (all-or-nothing, every problem listed by row; a changed row adds a
+    version under the same QR code). QR labels page (print sheet, PNG, CSV of links). Scan page.
+\end{itemize}
+
+% ------------------------------------------------------------------------------------------
+\release{0.1.1 --- Codespaces fix}{26 November 2026}{\commit{dc76ba8}}
+The Codespace opened in recovery mode with \code{npm: command not found}. The dev container now uses a Debian base
+image plus the official Node 24 feature.
+
+% ------------------------------------------------------------------------------------------
+\release{0.1.0 --- Proof of concept from spec v1.1}{25 November 2026}{\commit{8491989}}
+\begin{itemize}
+  \item Registry: suppliers, products with versioned governed attributes (Postgres JSONB), traceability records with
+    heats, batches (many-to-many) and serials, documents in a private Neon Object Storage bucket with 5-minute links.
+  \item Approval workflow: DRAFT, PENDING, APPROVED, REJECTED, SUPERSEDED, WITHDRAWN; review queue with differences;
+    mandatory rejection reason; one approved and one open version per record (database indexes); approved versions
+    immutable and the audit trail append-only (database triggers).
+  \item QR tokens: random, stored hashed and encrypted; rotate and revoke; resolution only for signed-in company users
+    and only of approved data.
+  \item Label OCR check: Tesseract.js and ZXing in the browser; label profiles; extraction, normalization, per-field
+    comparison; nine field results and five overall statuses; operator review; discrepancies; camera and
+    keyboard-wedge scanners.
+  \item Demo role switcher with supplier, reviewer, administrator, QR user, inspector and auditor personas.
+  \item Editable seed CSV (valve castings, fictional suppliers), GitHub Codespaces, GitHub Actions (CI, Pages, Neon
+    deploy); schema applied to Neon.
+\end{itemize}
+
+\section{Upgrade notes}
+\begin{itemize}
+  \item Run \code{npm run db:setup} (or \code{npm run db:migrate}) after pulling a release; migrations are numbered and
+    applied once. The Neon production branch had migration 001 only at the time of writing; 002 to 006 are pending.
+  \item Printed QR labels survive every release: tokens are never changed by an upgrade, and old 43-character tokens
+    still resolve.
+  \item From 0.5.0, \code{AUTH\_MODE} in \code{.env} has no effect and can be removed.
+\end{itemize}
+\end{document}

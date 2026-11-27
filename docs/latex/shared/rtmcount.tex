@@ -1,0 +1,9 @@
+% Counts rows of 04-traceability/rtm.csv by area and status, so every document reports the same numbers.
+%   \rtm{<area or all>}{<I|P|D|V|N|O|all>}   ->  a number
+\newcommand{\rtmstep}[2]{\ifcsdef{rtm@#1@#2}{\csxdef{rtm@#1@#2}{\the\numexpr\csuse{rtm@#1@#2}+1\relax}}{\csxdef{rtm@#1@#2}{1}}}
+\newcommand{\rtm}[2]{\ifcsdef{rtm@#1@#2}{\csuse{rtm@#1@#2}}{0}}
+\newcommand{\rtmfile}{../04-traceability/rtm.csv}
+\csvreader[separator=pipe,respect all,head to column names]{\rtmfile}{}{%
+  \edef\a{\area}\edef\s{\status}%
+  \rtmstep{\a}{\s}\rtmstep{\a}{all}\rtmstep{all}{\s}\rtmstep{all}{all}}
+\newcommand{\pct}[1]{\the\numexpr (#1*100 + \rtm{all}{all}/2) / \rtm{all}{all}\relax\,\%}

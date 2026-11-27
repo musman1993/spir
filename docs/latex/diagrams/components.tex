@@ -1,0 +1,42 @@
+% UML component view: web app, API modules, domain engine, providers.
+\begin{tikzpicture}[node distance=4mm and 4mm,
+  m/.style={box,minimum width=27mm,text width=25mm,font=\sffamily\scriptsize,minimum height=7mm,inner sep=3pt}]
+  % ---- Web app
+  \node[m] (w1) {Supplier portal pages};
+  \node[m,right=of w1] (w2) {Company portal pages};
+  \node[m,right=of w2] (w3) {Public scan page};
+  \node[m,right=of w3] (w4) {Session + API client};
+  \node[m,below=of w1,fill=spirwash] (d1) {Camera adapter};
+  \node[m,right=of d1,fill=spirwash] (d2) {Barcode (ZXing)};
+  \node[m,right=of d2,fill=spirwash] (d3) {OCR (Tesseract.js)};
+  \node[m,right=of d3,fill=spirwash] (d4) {QR renderer + scan check};
+  \begin{scope}[on background layer]\node[group,fit=(w1)(d4),inner ysep=11pt] (web) {};\end{scope}
+  \node[grouplabel] at (web.north west) {Web app (React 19, Vite) --- web/src};
+
+  % ---- API modules
+  \node[m,below=16mm of d1] (a1) {portal\\[-1pt]\tiny sign-in, profile, form};
+  \node[m,right=of a1] (a2) {importer\\[-1pt]\tiny CSV, QR label list};
+  \node[m,right=of a2] (a3) {traceability\\[-1pt]\tiny records, documents};
+  \node[m,right=of a3] (a4) {qr\\[-1pt]\tiny scan, rotate, revoke};
+  \node[m,below=of a1] (a5) {products};
+  \node[m,right=of a5] (a6) {validation\\[-1pt]\tiny label check runs};
+  \node[m,right=of a6] (a7) {catalog\\[-1pt]\tiny reference, dashboard};
+  \node[m,right=of a7] (a8) {audit};
+  \node[m,below=of a5,fill=spirmanila,draw=spiramber] (e1) {import engine\\[-1pt]\tiny seed/loadSeed.ts};
+  \node[m,right=of e1,fill=spirmanila,draw=spiramber] (e2) {extract};
+  \node[m,right=of e2,fill=spirmanila,draw=spiramber] (e3) {normalize};
+  \node[m,right=of e3,fill=spirmanila,draw=spiramber] (e4) {compare + overall};
+  \begin{scope}[on background layer]\node[group,fit=(a1)(e4),inner ysep=11pt] (api) {};\end{scope}
+  \node[grouplabel] at (api.north west) {API (Node 24, Hono) --- api/src/modules, api/src/domain};
+
+  % ---- Providers
+  \node[m,below=14mm of e1,fill=spirwash] (p1) {Database provider\\[-1pt]\tiny pg / PGlite};
+  \node[m,right=of p1,fill=spirwash] (p2) {Storage provider\\[-1pt]\tiny S3 / local / memory};
+  \node[m,right=of p2,fill=spirwash] (p3) {Auth provider\\[-1pt]\tiny portal sessions};
+  \node[m,right=of p3,fill=spirwash] (p4) {Crypto\\[-1pt]\tiny tokens, AES-GCM, HMAC};
+  \begin{scope}[on background layer]\node[group,fit=(p1)(p4),inner ysep=11pt] (prov) {};\end{scope}
+  \node[grouplabel] at (prov.north west) {Providers (swappable) --- api/src/providers, api/src/lib};
+
+  \draw[flow,line width=1pt] (web.south) -- node[lbl]{REST JSON over HTTPS (\code{/api/v1})} (api.north);
+  \draw[flow,line width=1pt] (api.south) -- (prov.north);
+\end{tikzpicture}

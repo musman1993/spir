@@ -38,6 +38,14 @@ supplier/reviewer/inspector roles and the approval workflow, is kept on the git 
 > anyone by design. Keep real data on a private address (a Codespace with **private** ports is ideal) until proper
 > accounts arrive. Don't put real data on a public GitHub Pages site.
 
+## Documentation
+
+The full project documentation lives in [`docs/latex/`](docs/latex/README.md) as LaTeX sources, one document per topic:
+executive summary, software requirements specification, software design description (UML), requirements traceability
+matrix, release notes, scope/limitations/risks/roadmap, test plan and report, user guide, and deployment and operations
+guide. GitHub builds all PDFs on every change (workflow **Documentation**, artifact `spir-documentation`); locally run
+`make` in `docs/latex/`.
+
 ## How it is put together
 
 ```
@@ -223,3 +231,4 @@ photos runs only where its git-ignored files exist.
 | `web/src/pages/` | Screens. `web/src/devices/` holds the camera / scanner / OCR adapters |
 | `seed/` | Demo CSV, label photos, optional real certificate files (`seed/documents/`) |
 | `docs/decisions.md` | Architecture decisions taken for this PoC |
+| `docs/latex/` | Documentation set (LaTeX): SRS, design, traceability, release notes, scope, tests, user guide, operations |

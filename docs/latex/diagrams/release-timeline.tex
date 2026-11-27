@@ -1,0 +1,14 @@
+% Release timeline v0.1 to v0.5.
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \draw[spirrule,line width=3pt,line cap=round] (0,0) -- (15.2,0);
+  \foreach \x/\v/\d/\t/\c in {
+      0.4/0.1/25 Nov/{Registry, approval\\workflow, QR, OCR}/spirblue,
+      3.9/0.2/26 Nov/{Receiving-label fields;\\open mode, CSV import}/spirblue,
+      7.4/0.3/26 Nov/{QR labels phones read;\\A4 sticker sheets}/spirblue,
+      10.9/0.4/26 Nov/{Glass visual system;\\database setup tools}/spirblue,
+      14.4/0.5/26 Nov/{Two portals,\\admin sign-in, live saves}/spircyan}{
+    \fill[\c] (\x,0) circle (0.2);
+    \node[font=\sffamily\bfseries\small,text=spirblue] at (\x,0.55) {v\v};
+    \node[font=\sffamily\scriptsize,text=spirink2] at (\x,0.95) {\d\ 2026};
+    \node[font=\sffamily\scriptsize,align=center,text width=30mm,anchor=north] at (\x,-0.35) {\t};}
+\end{tikzpicture}

@@ -1,0 +1,26 @@
+% Shared glossary, \input by documents that need it.
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{3.6cm}Y@{}}
+  \thead\hd{Term} & \hd{Meaning}\\\endhead
+  Shipment (record) & One delivery of one part against one purchase-order line. In the database: a traceability record (\code{TRC-nnnnnnn}) with its versions, heats, certificates and QR code.\\
+  Product & One company part number from one supplier (\code{PRD-nnnnnnn}). Many shipments can point to the same product.\\
+  Part number & The company's item number for the part (``Item'' on the receiving label, ``Part No'' on the supplier label).\\
+  PO, PO line & Purchase order number (10 digits in the demo data) and its line number (``LINE 4'').\\
+  Heat number & The melt (casting batch of metal) the part was made from, as stamped and printed by the supplier.\\
+  Pattern number & The casting pattern or mould identifier.\\
+  RT number & Radiographic (X-ray) test report reference.\\
+  MTC, CoC & Material test certificate (e.g. EN 10204 3.1); certificate of conformance.\\
+  Version & An immutable snapshot of a shipment's or product's data. In release 0.5 the newest version is live (APPROVED) and older ones are SUPERSEDED.\\
+  QR token & The random 16-character code inside a QR label's link. It identifies one shipment and holds no product data.\\
+  Label check & A validation run: a photo of a physical label is read (OCR and barcodes), matched to a shipment, and compared field by field.\\
+  Label profile & Configuration that tells the extractor how a label layout names its fields (aliases, patterns, thresholds).\\
+  OCR & Optical character recognition; here Tesseract.js running in the browser.\\
+  ZXing & Open-source barcode and QR decoder used in the browser.\\
+  Supplier portal & The pages at \code{/\#/supplier} where a supplier enters data and prints QR labels.\\
+  Company portal & The pages at \code{/\#/company} where company staff scan, search and check labels.\\
+  Public scan page & The page at \code{/\#/t/<token>} that any phone camera opens from a QR label, without sign-in.\\
+  RBAC & Role-based access control: individual accounts with roles and permissions. Planned; release 0.5 has two shared accounts.\\
+  Neon & Serverless Postgres, Functions and Object Storage platform hosting the database, API and files.\\
+  Codespace & A cloud development environment provided by GitHub, used to run SPIR during development.\\
+  PoC & Proof of concept: a working application built to prove the approach, not yet hardened for production.\\
+\end{xltabular}}

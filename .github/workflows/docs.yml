@@ -1,0 +1,40 @@
+name: Documentation
+
+# Builds every PDF of the SPIR documentation set (docs/latex) on each change and attaches them to the run.
+on:
+  push:
+    branches: [main]
+    paths: ['docs/latex/**', '.github/workflows/docs.yml']
+  pull_request:
+    paths: ['docs/latex/**', '.github/workflows/docs.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build all documents (TeX Live)
+        uses: xu-cheng/latex-action@v3
+        with:
+          work_in_root_file_dir: true
+          root_file: |
+            docs/latex/01-executive-summary/SPIR-EXS-001-executive-summary.tex
+            docs/latex/02-srs/SPIR-SRS-001-software-requirements.tex
+            docs/latex/03-design/SPIR-SDD-001-software-design.tex
+            docs/latex/04-traceability/SPIR-RTM-001-traceability-matrix.tex
+            docs/latex/05-release-notes/SPIR-REL-001-release-notes.tex
+            docs/latex/06-scope-roadmap-risks/SPIR-SCP-001-scope-roadmap-risks.tex
+            docs/latex/07-test-report/SPIR-TST-001-test-plan-report.tex
+            docs/latex/08-user-guide/SPIR-UG-001-user-guide.tex
+            docs/latex/09-deployment-operations/SPIR-OPS-001-deployment-operations.tex
+      - name: Collect PDFs
+        run: |
+          mkdir -p spir-documentation
+          find docs/latex -name 'SPIR-*.pdf' -exec cp {} spir-documentation/ \;
+          ls -la spir-documentation
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spir-documentation
+          path: spir-documentation/
+          retention-days: 90

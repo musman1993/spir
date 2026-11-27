@@ -1,0 +1,23 @@
+% System context (C4 level 1): who uses SPIR and what it depends on.
+\begin{tikzpicture}[node distance=10mm and 14mm]
+  % people
+  \pic at (0,2.6) {actor}; \node[font=\sffamily\scriptsize\bfseries,align=center] at (0,1.75) {Supplier user\\[-1pt]\mdseries(supplier portal)};
+  \pic at (0,-0.2) {actor}; \node[font=\sffamily\scriptsize\bfseries,align=center] at (0,-1.05) {Company user\\[-1pt]\mdseries(receiving, quality)};
+  \pic at (0,-3.0) {actor}; \node[font=\sffamily\scriptsize\bfseries,align=center] at (0,-3.85) {Anyone with a phone\\[-1pt]\mdseries(scans a QR label)};
+  % system
+  \node[darkbox,minimum width=46mm,minimum height=34mm,text width=42mm] (spir) at (6.2,-0.2)
+    {SPIR\\[2pt]\mdseries\footnotesize Supplier Product Information Registry\\[3pt]\scriptsize web app + API};
+  % dependencies
+  \node[store,right=22mm of spir,yshift=11mm] (db) {Neon Postgres\\[-1pt]\scriptsize schema \code{spir}};
+  \node[store,right=22mm of spir,yshift=-12mm] (obj) {Neon Object\\[-1pt]Storage\\[-1pt]\scriptsize bucket \code{spir}};
+  \node[ext,below=14mm of spir,text width=40mm] (gh) {GitHub\\[-1pt]\scriptsize code, CI/CD, Pages hosting, Codespaces};
+  \node[ext,above=12mm of spir,text width=40mm] (edi) {Supplier EDI (X12 832/841)\\[-1pt]\scriptsize planned, not built};
+  % flows
+  \draw[flow] (0.55,2.4) -- node[lbl,sloped]{shipments, CSV, labels} ([yshift=10mm]spir.west);
+  \draw[flow] (0.55,-0.3) -- node[lbl]{scan, search, label check} (spir.west);
+  \draw[flow] (0.55,-3.1) -- node[lbl,sloped]{QR scan (no sign-in)} ([yshift=-10mm]spir.west);
+  \draw[flow] ([yshift=9mm]spir.east) -- node[lbl]{SQL / TLS} (db.west);
+  \draw[flow] ([yshift=-9mm]spir.east) -- node[lbl]{S3 API} (obj.west);
+  \draw[dflow] (gh) -- node[lbl]{deploy} (spir);
+  \draw[dflow,spirgrey] (edi) -- (spir);
+\end{tikzpicture}

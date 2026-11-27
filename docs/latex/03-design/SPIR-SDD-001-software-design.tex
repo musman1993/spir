@@ -1,0 +1,304 @@
+\makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
+\documentclass[11pt,a4paper]{article}
+\usepackage{spirdoc}
+\SetDoc{SPIR-SDD-001}{Software Design Description}{1.0}{Issued for review}
+\Revisions{%
+  1.0 & 27 Nov 2026 & \SPIRAuthor & First issue, describing the design of release \SPIRRelease.\\
+}
+\newcommand{\ep}[4]{\code{#1} & \code{#2} & #3 & #4\\}
+
+\begin{document}
+\MakeCover{How SPIR is built: architecture, components, data model, behaviour, interfaces, security and the design decisions behind them.}
+\DocumentControl
+\tableofcontents
+\clearpage
+
+% =====================================================================================
+\section{Introduction}
+This Software Design Description explains how SPIR release \SPIRRelease\ meets the requirements in SPIR-SRS-001. It is
+the starting point for a developer or vendor taking the code forward. Diagrams use UML notation drawn in TikZ; their
+sources live in \fpath{docs/latex/diagrams/}.
+
+\subsection{Design goals}
+\begin{enumerate}
+  \item \textbf{Integrity first}: history is never overwritten, approved versions are immutable and the audit trail is
+    append-only, enforced by the database rather than by application code alone.
+  \item \textbf{Replaceable parts}: database, storage, authentication, OCR engine and devices sit behind small
+    interfaces, so the proof of concept can move to company infrastructure without rewriting business rules.
+  \item \textbf{One rule set}: the shipment form and the CSV import use the same import engine, and the label check uses
+    one versioned comparison engine.
+  \item \textbf{No secrets in the browser}: the web app is static and public; everything sensitive runs in the API.
+\end{enumerate}
+
+% =====================================================================================
+\section{Architecture}
+\subsection{Style}
+A \textbf{modular monolith}: one API deployable with clear modules, a pure domain engine with no I/O, and providers
+for infrastructure. The web app is a single-page application that talks to the API over REST.
+
+\Diagram[0.5]{deployment}{Deployment view.}
+\Diagram[0.6]{components}{Component view.}
+
+\subsection{Technology stack}
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{3.3cm}L{4.6cm}Y@{}}
+  \thead\hd{Layer} & \hd{Technology} & \hd{Why}\\
+  Web app & React 19, React Router 7 (hash routing), Vite 8, TypeScript 5.7 & Static build for GitHub Pages; hash routes need no server rewrites.\\
+  OCR and barcodes & Tesseract.js 7, ZXing (\code{@zxing/browser}) & Runs in the browser; no paid OCR service; engine replaceable.\\
+  QR rendering & \code{qrcode} 1.5 (matrix), own SVG renderer & Vector output, logo cut-out, verification.\\
+  API & Node 24, Hono 4, Zod 3 & Small, fast, runs on Neon Functions and plain Node.\\
+  Database & Neon Postgres, \code{pg} 8; PGlite for tests & JSONB for governed attributes; triggers and indexes for invariants.\\
+  Files & Neon Object Storage (S3 API, AWS SDK v3) & Private bucket, presigned links.\\
+  Hosting & Neon Functions (\code{spirapi}), GitHub Pages & Serverless API, static web.\\
+  Tooling & GitHub Codespaces, GitHub Actions, Vitest 3, latexmk & One-click environment; CI on every push; documentation built as PDFs.\\
+\end{tabularx}}
+
+\subsection{Source layout}
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{4.6cm}Y@{}}
+  \thead\hd{Path} & \hd{Content}\\
+  \fpath{api/src/modules/} & HTTP modules: portal, importer, traceability, products, qr, validation, catalog, audit.\\
+  \fpath{api/src/domain/} & Pure label-validation engine: normalize, extract, compare (no database, no I/O).\\
+  \fpath{api/src/seed/loadSeed.ts} & Import engine used by the seed, the CSV upload and the shipment form.\\
+  \fpath{api/src/providers/} & Database (pg, PGlite), storage (S3, local disk, memory), auth (portal sessions).\\
+  \fpath{api/src/lib/} & Crypto, errors, audit, authorization helpers, migrations.\\
+  \fpath{api/db/migrations/} & Numbered SQL migrations 001--006.\\
+  \fpath{web/src/pages/} & Screens; \fpath{web/src/devices/} camera, barcode, OCR, scanner adapters; \fpath{web/src/qr/} label rendering.\\
+  \fpath{seed/} & Demo CSV and label photos (synthetic); \fpath{seed/local/} for private data (git-ignored).\\
+  \fpath{docs/latex/} & This documentation set.\\
+\end{tabularx}}
+
+% =====================================================================================
+\section{Data design}
+\Diagram[0.62]{domain-model}{Domain model (UML class diagram).}
+
+\subsection{Tables}
+All objects live in Postgres schema \code{spir}; every query is schema-qualified.
+
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{4.4cm}Y@{}}
+  \thead\hd{Table} & \hd{Purpose}\\\endhead
+  \code{supplier} & Supplier organisation: code, legal name, country, status, contacts (from the profile).\\
+  \code{app\_user} & Accounts. Active in 0.5: \code{supplier-admin} (SUPPLIER, linked to one supplier) and \code{company-admin} (COMPANY). Older roles kept inactive for history.\\
+  \code{product\_category}, \code{attribute\_definition} & Governed attribute sets: type, scope, requiredness, comparison rule, label check flag; versioned.\\
+  \code{product}, \code{product\_identifier}, \code{product\_version} & Product identity, identifiers (company and supplier part numbers), versioned descriptive data.\\
+  \code{traceability\_record}, \code{traceability\_version} & Shipment and its versions; attributes in JSONB (PO, line, quantity, pattern, RT, \ldots).\\
+  \code{heat}, \code{batch}, \code{batch\_heat}, \fpath{traceability_version_heat/batch/serial} & Manufacturing identifiers and their many-to-many links.\\
+  \code{document} & Certificates: type, storage key, SHA-256, size, media type; linked to record and version.\\
+  \code{qr\_token} & Token hash (lookup), AES-GCM ciphertext (reprint), status; one ACTIVE per record.\\
+  \code{label\_profile} & Versioned extraction configuration (\code{RECEIVING\_LABELS v1} is the default).\\
+  \code{validation\_run}, \code{validation\_field\_result}, \code{discrepancy} & Label checks: pinned versions, extraction, per-field results, reviews, discrepancies.\\
+  \code{audit\_event} & Append-only audit trail with correlation IDs.\\
+  \code{schema\_migrations} & Applied migration files.\\
+\end{xltabular}}
+
+\subsection{Invariants enforced by the database}
+\begin{itemize}
+  \item Approved versions cannot be updated (trigger raises \emph{immutable}).
+  \item Audit events cannot be updated or deleted (trigger raises \emph{append-only}).
+  \item At most one APPROVED and one open version per record, and one ACTIVE QR token per record (partial unique indexes).
+  \item Every record references exactly one product; every product one supplier (foreign keys).
+\end{itemize}
+
+\subsection{Migrations}
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{4.8cm}Y@{}}
+  \thead\hd{File} & \hd{Change}\\
+  \code{001\_init.sql} & Full schema, triggers, indexes.\\
+  \code{002\_reference\_data.sql} & First category, attributes and label profile.\\
+  \code{003\_label\_profile\_v2.sql} & Calibrated label profile.\\
+  \fpath{004_identification_fields.sql} & Receiving-label attribute set, \code{RECEIVING\_LABELS v1}, RT report document type.\\
+  \code{005\_open\_mode\_operator.sql} & Operator account (open mode, now inactive).\\
+  \code{006\_two\_portals.sql} & SUPPLIER / COMPANY roles, two admin accounts, supplier contact fields.\\
+\end{tabularx}}
+Migrations run inside a transaction with \code{SET LOCAL search\_path} (safe behind the Neon connection pooler) and are
+recorded in \code{schema\_migrations}.
+
+% =====================================================================================
+\section{Behaviour}
+\subsection{Saving a shipment}
+The form posts JSON; the API validates it, turns it into one CSV row, forces the profile supplier, and hands it to the
+import engine. The CSV upload follows the same path with many rows. A row is matched to an existing record by its
+\code{PO-L<line>} key (or the record's stored key when editing), so saving again updates rather than duplicates.
+\Diagram[0.5]{seq-save-shipment}{Sequence: save a shipment.}
+
+\subsection{Scanning a QR label}
+\Diagram[0.5]{seq-qr-scan}{Sequence: anyone scans a QR label.}
+
+\subsection{Checking a product label}
+\Diagram[0.55]{seq-label-check}{Sequence: company label check.}
+
+\subsection{State machines}
+\Diagram[0.35]{state-version}{Version lifecycle.}
+\Diagram[0.35]{state-qr}{QR token lifecycle.}
+
+% =====================================================================================
+\section{API design}
+REST over HTTPS under \code{/api/v1}; JSON bodies; errors as \code{\{error: \{code, message, details\}\}} with HTTP
+401 (sign in), 403 (wrong portal), 404, 409, 410 (revoked QR), 422 (validation), 429 (rate limit). Every response
+carries an \code{X-Correlation-Id}. The contract is in \fpath{api/openapi.yaml}.
+
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{1.2cm}L{5.6cm}L{2.3cm}Y@{}}
+  \thead\hd{Method} & \hd{Path} & \hd{Access} & \hd{Purpose}\\\endhead
+  \ep{POST}{/auth/login}{Anyone}{Sign in to a portal; returns a session token.}
+  \ep{GET}{/me}{Signed in}{Current account, portal and supplier.}
+  \ep{GET, PUT}{/supplier/profile}{Supplier}{Read or save the supplier profile.}
+  \ep{POST}{/supplier/shipments}{Supplier}{Add one shipment (form).}
+  \ep{PUT}{/supplier/shipments/\{code\}}{Supplier}{Edit a shipment; identity fields locked.}
+  \ep{GET}{/import/template}{Supplier}{CSV template.}
+  \ep{POST}{/import}{Supplier}{Upload a CSV (all-or-nothing).}
+  \ep{GET}{/qr-labels}{Supplier}{Own shipments with QR tokens, for printing.}
+  \ep{GET}{/traceability/\{code\}/qr}{Supplier}{The record's label (token and link).}
+  \ep{POST}{/traceability/\{code\}/qr/rotate}{Supplier}{Replace the label.}
+  \ep{POST}{/traceability/\{code\}/qr/revoke}{Supplier}{Revoke the label.}
+  \ep{POST}{/traceability/\{code\}/documents}{Supplier}{Upload a certificate to the live version.}
+  \ep{GET}{/traceability, /traceability/\{code\}}{Signed in}{Search and read shipments (supplier: own only).}
+  \ep{GET}{/products, /products/\{code\}}{Signed in}{Read products (supplier: own only).}
+  \ep{GET}{/documents/\{code\}/download}{Signed in}{5-minute signed link.}
+  \ep{GET}{/qr/\{token\}}{Public}{Scan: live shipment data. Rate limited.}
+  \ep{GET}{/qr/\{token\}/documents/\{code\}}{Public}{Certificate link, only for the token's own record.}
+  \ep{POST, GET}{/validations, /validations/\{code\}}{Company}{Run and read label checks.}
+  \ep{POST}{/validations/\{code\}/resolve, /fields/\{key\}/review, /finalize, /discrepancies}{Company}{Pick the record, review fields, finalize, record discrepancies.}
+  \ep{GET}{/suppliers, /audit}{Company}{Supplier list; audit events.}
+  \ep{GET}{/attribute-definitions}{Public}{Field names and labels (no business data).}
+  \ep{GET}{/categories, /label-profiles, /dashboard}{Signed in}{Reference data and counts.}
+\end{xltabular}}
+
+% =====================================================================================
+\section{Security design}
+\subsection{Authentication}
+\code{POST /auth/login} checks the fixed credentials of the chosen portal with constant-time comparison and a short
+delay on failure. It returns a token \code{base64url(\{u, exp\}).HMAC-SHA256}, valid for 12 hours, keyed with a
+secret derived from \code{QR\_TOKEN\_KEY}. The API loads the account on every request, so deactivating an account
+takes effect at once. The web app stores one token per portal and picks it from the address.
+
+\subsection{Authorization}
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}Y>{\centering\arraybackslash}p{2cm}>{\centering\arraybackslash}p{2cm}>{\centering\arraybackslash}p{2cm}@{}}
+  \thead\hd{Capability} & \hd{Supplier} & \hd{Company} & \hd{Public}\\
+  Profile, shipments, CSV, certificates upload & \yes & \no & \no\\
+  Print, replace, revoke QR labels & \yes{} own & \no & \no\\
+  Read shipments and products & \yes{} own & \yes{} all & \no\\
+  Scan a QR label, open its certificates & \yes & \yes & \yes\\
+  Label checks, discrepancies & \no & \yes & \no\\
+  Supplier list, audit API & \no & \yes & \no\\
+\end{tabularx}}
+
+Supplier scope is enforced in each query (\code{supplier\_id = account supplier}); another supplier's record answers 404
+so that its existence is not revealed.
+
+\subsection{Protection of data}
+\begin{itemize}
+  \item \textbf{QR tokens}: 80 random bits (Crockford base32); stored as SHA-256 for lookup and AES-256-GCM ciphertext for
+    reprinting; old 256-bit tokens still resolve. Rate limit 60 look-ups per minute per caller address.
+  \item \textbf{Certificates}: private bucket; links signed for 300 seconds; uploads checked for size, extension and
+    sniffed content type; SHA-256 stored.
+  \item \textbf{Transport}: HTTPS; Postgres with \code{sslmode=verify-full}; CORS limited by \code{ALLOWED\_ORIGINS}.
+  \item \textbf{Secrets}: only in \code{.env} (git-ignored), GitHub Actions secrets and Neon variables.
+\end{itemize}
+
+\subsection{Threats and mitigations}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{3.4cm}Y L{3.6cm}@{}}
+  \thead\hd{Threat} & \hd{Mitigation in 0.5} & \hd{Residual risk}\\\endhead
+  Guessing the shared password & Short delay, audit of sign-ins. & \High\ fixed admin/admin; replace with real accounts.\\
+  Reading data by guessing QR tokens & 80-bit random tokens, rate limit, audit. & \Low\\
+  A leaked QR link & Revoke or replace the label. & \Med\ scans are public by decision.\\
+  Supplier reading another supplier & Scope in every query; 404. & \Low\\
+  Tampered session & HMAC signature, expiry, account reloaded. & \Low\\
+  Malicious upload & Type sniffing, size limit, private storage. & \Med\ no malware scan.\\
+  Lost history & Immutable versions, append-only audit (triggers). & \Low\\
+\end{xltabular}}
+
+% =====================================================================================
+\section{Label validation engine}
+\subsection{Pipeline}
+\begin{enumerate}
+  \item \textbf{Capture} (browser): photo or camera, manual crop, upscaling to about 2000\,px (at most 4×), greyscale and
+    contrast; image quality warnings.
+  \item \textbf{Read} (browser): Tesseract.js words with confidences; ZXing barcodes and QR codes on the same image.
+  \item \textbf{Extract} (\fpath{domain/extract.ts}): profile aliases (exact, then fuzzy at line start), value patterns
+    and fallbacks; barcodes mapped by pattern; a barcode beats a weak OCR read, a confident conflicting read becomes an
+    alternative.
+  \item \textbf{Resolve} (\code{resolver-v2}): part + (PO or heat), or PO + (heat or line); line breaks ties; several
+    candidates go to the user. A SPIR QR on the label resolves directly.
+  \item \textbf{Compare} (\code{compare-v2}): per attribute method (identifier, code, date, decimal, integer, quantity,
+    name, text). Exact long identifiers match even at low confidence; confusable characters, junk characters, cut-off
+    reads and a lost slash go to review, never to a match.
+  \item \textbf{Overall} (\code{overall-v2}): a critical exception is never hidden by matches; a non-critical field
+    missing from the label is ignored.
+\end{enumerate}
+Rule versions are stored with every run: \code{compare-v2/overall-v2/resolver-v2}.
+
+\subsection{Label profile RECEIVING\_LABELS v1}
+Covers the company receiving label (Item, Purchase Order \#, Line \#, Qty, Description) and the supplier label (supplier
+name, Part No with revision, PO No with LINE, Qty \code{a/b}, Heat No, Pattern, RT). Patterns: PO exactly 10 digits;
+part number \code{[0-9]\{1,2\}[A-Z][0-9A-Z]\{6,10\}}; country of origin fallback ``MADE IN \ldots''.
+
+% =====================================================================================
+\section{QR label rendering}
+\begin{itemize}
+  \item Matrix from \code{qrcode}; error-correction level chosen as the strongest of H, Q, M that does not enlarge the
+    code beyond level M.
+  \item Own SVG renderer: 2-module border in the image plus label padding (at least 4 in total); logo in an odd-sized,
+    grid-aligned cut-out of at most 20\% of the width.
+  \item Verification: every code is rasterised and decoded with ZXing; on failure the logo shrinks (20, 16, 12\%) or is
+    removed.
+  \item Sheets: A4 templates in millimetres (\code{@page sheet \{size: A4; margin: 0\}}), start position, printer offset;
+    PNG at 300\,dpi at the label's real size.
+\end{itemize}
+
+% =====================================================================================
+\section{Front-end design}
+\begin{itemize}
+  \item Routes: \code{/\#/supplier/*}, \code{/\#/company/*}, public \code{/\#/t/:token}; anything else goes to the company portal.
+  \item One \code{PortalSession} per portal; the API client picks the token from the address.
+  \item Visual system: deep-blue glass rail, warm mist canvas, frosted cards (blur 14\,px, 18\,px radius), brand colour
+    tokens in \fpath{web/src/styles.css}; status colours with darker same-hue text for 4.5:1 contrast; Figtree and IBM Plex Mono.
+  \item Device adapters in \fpath{web/src/devices}: camera (\code{getUserMedia}), barcode (ZXing), OCR (Tesseract.js
+    worker), keyboard-wedge scanner (fast keystrokes ending in Enter), image preprocessing.
+\end{itemize}
+
+% =====================================================================================
+\section{Configuration}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{4.6cm}Y@{}}
+  \thead\hd{Variable} & \hd{Meaning}\\\endhead
+  \code{DATABASE\_URL} & Postgres connection string (Neon); set with \code{npm run db:connect}.\\
+  \code{QR\_TOKEN\_KEY} & 32 random bytes, base64. Encrypts QR tokens and derives the session and file-link keys. Must stay the same across environments that share data.\\
+  \code{AWS\_ACCESS\_KEY\_ID}, \code{AWS\_SECRET\_ACCESS\_KEY}, \code{AWS\_ENDPOINT\_URL\_S3}, \code{AWS\_REGION}, \code{SPIR\_BUCKET} & Neon Object Storage. If empty, files go to local disk (\code{.data/storage}).\\
+  \code{PUBLIC\_APP\_URL} & Web address printed inside QR codes, e.g. the GitHub Pages URL.\\
+  \code{ALLOWED\_ORIGINS} & CORS origins for the API.\\
+  \code{PORT} & Local API port (8787).\\
+  \code{VITE\_API\_BASE\_URL}, \code{BASE\_PATH} & Web build: API address and Pages sub-path.\\
+\end{xltabular}}
+
+% =====================================================================================
+\section{Design decisions}
+The full log is \fpath{docs/decisions.md}. The main ones:
+
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{1.4cm}Y Y@{}}
+  \thead\hd{ID} & \hd{Decision} & \hd{Reason}\\\endhead
+  ADR-01 & Postgres JSONB for flexible attributes, governed by \code{attribute\_definition}; no document database. & One store, transactions, constraints; new fields without code.\\
+  ADR-02 & Modular monolith on Neon Functions with provider interfaces. & Simple to run; parts replaceable later.\\
+  ADR-03 & OCR in the browser; server receives text. & No paid service; engine swappable; images stay small.\\
+  ADR-04 & Opaque random QR tokens, hashed and encrypted. & No data in the code; reprintable; revocable.\\
+  ADR-05 & Version every change; immutable approved history. & Traceability and audit.\\
+  ADR-06 & Short base32 tokens and size-optimised error correction (0.3). & Phone cameras could not detect dense codes.\\
+  ADR-07 & Two portals with fixed admin/admin (0.5). & Stakeholder request; RBAC later.\\
+  ADR-08 & Saves live immediately; approval workflow archived (0.5). & Stakeholder request for simplicity in this phase.\\
+  ADR-09 & Public QR scans (0.5). & Stakeholder request; risk accepted in SPIR-SCP-001.\\
+  ADR-10 & Form saves go through the CSV import engine. & One rule set, one test surface.\\
+\end{xltabular}}
+
+\section{Technical debt}
+\begin{itemize}
+  \item Fixed credentials and shared accounts (replace with RBAC and SSO).
+  \item In-memory rate limiter per function instance (move to a shared store).
+  \item Unused draft/submit helpers in \fpath{api/src/modules/versioning.ts} kept for the workflow's return.
+  \item \fpath{api/openapi.yaml} carries a v0.5 change note; the path list needs a full refresh.
+  \item No metrics or tracing; audit is the only operational record.
+\end{itemize}
+\end{document}

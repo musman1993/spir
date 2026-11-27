@@ -1,0 +1,97 @@
+\makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
+\documentclass[11pt,a4paper]{article}
+\usepackage{spirdoc}
+\SetDoc{SPIR-EXS-001}{Executive Summary}{1.0}{Issued for review}
+\Revisions{%
+  1.0 & 27 Nov 2026 & \SPIRAuthor & First issue for release \SPIRRelease.\\
+}
+\input{rtmcount.tex}
+\newcommand{\kpi}[3]{\begin{tikzpicture}
+  \node[draw=spirrule,fill=white,rounded corners=6pt,minimum width=3.6cm,minimum height=2.3cm] (k) {};
+  \node[font=\bfseries\fontsize{24}{26}\selectfont,text=#3] at ([yshift=4mm]k.center) {#1};
+  \node[font=\footnotesize,text=spirink2,align=center] at ([yshift=-5.5mm]k.center) {#2};
+\end{tikzpicture}}
+
+\begin{document}
+\MakeCover{SPIR at a glance: the problem it solves, what release \SPIRRelease\ delivers, where it stands against the specification, and the decisions needed to reach production.}
+\DocumentControl
+
+\section{The problem}
+Receiving inspection checks every incoming part against its purchase order, heat number, quantity and certificates.
+Today that information arrives on paper labels, e-mails and PDFs, and is matched by eye. Wrong heats, wrong quantities
+and missing certificates are found late, and there is no single record of what the supplier declared.
+
+\section{What SPIR does}
+SPIR is a company-owned registry with \textbf{one record per shipment} and \textbf{one QR label per shipment}:
+\begin{itemize}
+  \item \textbf{Suppliers} enter shipment data in their portal (form or CSV), attach certificates, and print QR labels
+    for their parts.
+  \item \textbf{At receiving}, anyone scans the label with a phone to see the shipment and open its certificates.
+  \item \textbf{Company staff} search all shipments and check the supplier's own sticker against the registry from a
+    photo: SPIR reads it (OCR and barcodes), finds the shipment and compares every field.
+  \item \textbf{Every change is kept}: history cannot be overwritten and every action is audited.
+\end{itemize}
+
+\Diagram[0.36]{context}{SPIR in context.}
+
+\section{Status of release \SPIRRelease}
+\begin{center}
+\kpi{5}{releases in\\2 days}{spirblue}\hfill
+\kpi{63/63}{automated tests\\passing}{spirgreenink}\hfill
+\kpi{\rtm{all}{I}}{spec requirements\\implemented}{spirgreenink}\hfill
+\kpi{\rtm{all}{P}}{partially\\implemented}{spirbrown}
+\end{center}
+
+\begin{keypoint}[In short]
+A working proof of concept covering supplier data entry, QR labels that phone cameras read reliably, public scanning,
+company search and an OCR label check, on the agreed stack (GitHub, Neon). Of the \rtm{all}{all} requirements in
+spec v1.1, \rtm{all}{I} are implemented and \rtm{all}{P} partly; \rtm{all}{D} were built then deferred by decision
+(approval workflow), \rtm{all}{V} deviate by decision (open QR scans), \rtm{all}{N} are not started (mostly X12 EDI and
+user administration) and \rtm{all}{O} targets are still to be agreed.
+\end{keypoint}
+
+\subsection{How it evolved}
+\Diagram[0.25]{release-timeline}{Releases.}
+\begin{description}
+  \item[0.1] Full proof of concept from the specification, including an approval workflow and demo roles.
+  \item[0.2] Fields taken from real receiving labels; a simple mode with CSV import, QR labels and scanning.
+  \item[0.3] QR labels redesigned after phones failed to read them; decoding at distance went from 13/20 to 20/20.
+  \item[0.4] Approved visual design and brand palette.
+  \item[0.5] Supplier and company portals with sign-in; two roles for now; saves live immediately.
+\end{description}
+
+\section{What it is not yet}
+\begin{caution}[Proof of concept, not production]
+\begin{itemize}
+  \item One shared sign-in per portal (\code{admin} / \code{admin}); no personal accounts or role-based access.
+  \item No review step before supplier data goes live (built earlier, archived).
+  \item QR scans and their certificates are open to anyone holding the label.
+  \item No X12 EDI or ERP integration; no production hosting, monitoring or security testing.
+  \item OCR on real photos needs a tight crop and good light; accuracy not yet measured at scale.
+\end{itemize}
+\end{caution}
+
+\section{Recommended next steps}
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{3.2cm}Y@{}}
+  \thead\hd{Phase} & \hd{Outcome}\\
+  1. Accounts and control & Personal accounts, roles and company SSO; restore the approval workflow; decide on public scans.\\
+  2. Production readiness & Permanent hosting and address, backups, monitoring, security testing, malware scanning, admin screens.\\
+  3. Integration & X12 832/841 supplier messages and ERP purchase orders and receipts.\\
+  4. Inspection at scale & Measured OCR accuracy, more label layouts, fixed cameras, offline capture.\\
+\end{tabularx}}
+
+\section{Decisions needed}
+\begin{enumerate}
+  \item \textbf{Public QR scans}: keep open, or require a company sign-in before production?
+  \item \textbf{Approval}: when should supplier data need company approval again, and who approves?
+  \item \textbf{Address}: the permanent web address to print in QR codes.
+  \item \textbf{Ownership}: owners and budget for Phase 1, and for risks R-01 (shared sign-in), R-02 (public scans) and
+    R-04 (credentials shared during set-up must be rotated).
+\end{enumerate}
+
+\section{Where to find more}
+SPIR-SRS-001 (requirements), SPIR-SDD-001 (design), SPIR-RTM-001 (requirement-by-requirement status), SPIR-REL-001
+(release notes), SPIR-SCP-001 (scope, limitations, risks, roadmap), SPIR-TST-001 (tests), SPIR-UG-001 (user guide),
+SPIR-OPS-001 (deployment and operations). Source: \href{\SPIRRepoURL}{\SPIRRepo}, folder \fpath{docs/latex/}.
+\end{document}

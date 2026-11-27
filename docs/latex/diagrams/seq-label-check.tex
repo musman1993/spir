@@ -1,0 +1,26 @@
+% UML sequence: a company user checks a supplier label photo against the registry.
+\begin{tikzpicture}[x=1cm,y=-0.6cm]
+  \foreach \x/\n/\t in {0/u/Company user,2.9/w/Web app,5.8/o/OCR + ZXing (browser),8.9/v/API: validation,11.9/g/Domain engine,14.6/d/Postgres}{
+    \node[lifehead,minimum width=21mm] (\n) at (\x,0) {\t};
+    \draw[lifeline] (\x,0.6) -- (\x,21.0);}
+  \draw[activation] (5.67,3.6) rectangle (5.93,6.4);
+  \draw[activation] (8.77,7.4) rectangle (9.03,15.6);
+  \draw[msg] (0,1.4) -- node[msglbl]{photo / camera capture} (2.9,1.4);
+  \draw[msg] (0,2.5) -- node[msglbl]{crop the label} (2.9,2.5);
+  \draw[msg] (2.9,3.6) -- node[msglbl]{upscale, greyscale, contrast} (5.8,3.6);
+  \node[note=32mm,anchor=west] at (15.0,4.6) {Tesseract.js words + confidences; ZXing barcodes / QR};
+  \draw[reply] (5.8,6.4) -- node[msglbl]{text, words, barcodes} (2.9,6.4);
+  \draw[msg] (2.9,7.4) -- node[msglbl]{POST /validations} (8.9,7.4);
+  \draw[msg] (8.9,8.4) -- node[msglbl]{extract (label profile)} (11.9,8.4);
+  \draw[msg] (8.9,9.6) -- node[msglbl]{resolve record (resolver-v2)} (14.6,9.6);
+  \node[note=32mm,anchor=west] at (15.0,10.4) {part + (PO or heat), or PO + (heat or line); several matches: user picks};
+  \draw[msg] (8.9,12.4) -- node[msglbl]{compare each field (compare-v2)} (11.9,12.4);
+  \draw[reply] (11.9,13.4) -- node[msglbl]{field results + overall-v2} (8.9,13.4);
+  \draw[msg] (8.9,14.4) -- node[msglbl,pos=0.65]{store run, field results, evidence} (14.6,14.4);
+  \draw[reply] (8.9,15.6) -- node[msglbl]{validation matrix} (2.9,15.6);
+  \draw[reply] (2.9,16.6) -- node[msglbl]{PASS / FAIL / NEEDS REVIEW ...} (0,16.6);
+  \draw[msg] (0,17.8) -- node[msglbl]{confirm or correct a field} (2.9,17.8);
+  \draw[msg] (2.9,18.8) -- node[msglbl]{POST .../fields/<key>/review (raw OCR kept)} (8.9,18.8);
+  \draw[msg] (0,20.0) -- node[msglbl]{finalize, optional discrepancy} (2.9,20.0);
+  \draw[msg] (2.9,20.6) -- node[msglbl]{POST .../finalize --- never changes registry data} (8.9,20.6);
+\end{tikzpicture}

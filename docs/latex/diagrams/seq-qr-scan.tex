@@ -1,0 +1,22 @@
+% UML sequence: anyone scans a printed QR label with a phone.
+\begin{tikzpicture}[x=1cm,y=-0.62cm]
+  \foreach \x/\n/\t in {0/u/Phone user,3.2/w/Public scan page,6.4/q/API: qr,9.6/d/Postgres,12.8/s/Object Storage}{
+    \node[lifehead] (\n) at (\x,0) {\t};
+    \draw[lifeline] (\x,0.6) -- (\x,17.0);}
+  \draw[activation] (6.27,2.6) rectangle (6.53,8.6);
+  \draw[activation] (6.27,11.6) rectangle (6.53,15.4);
+  \draw[msg] (0,1.6) -- node[msglbl]{camera opens .../\#/t/<token>} (3.2,1.6);
+  \draw[msg] (3.2,2.6) -- node[msglbl]{GET /qr/<token> (no sign-in)} (6.4,2.6);
+  \node[note=34mm,anchor=west] at (13.2,3.4) {rate limit per caller address; token format check};
+  \draw[msg] (6.4,5.0) -- node[msglbl]{lookup by SHA-256(token)} (9.6,5.0);
+  \draw[reply] (9.6,6.0) -- node[msglbl]{record + token status} (6.4,6.0);
+  \node[note=34mm,anchor=west] at (13.2,6.6) {unknown: 404\quad revoked: 410\\audit QR\_RESOLVE\_* in all cases};
+  \draw[reply] (6.4,8.6) -- node[msglbl]{live version, heats, documents} (3.2,8.6);
+  \draw[reply] (3.2,9.6) -- node[msglbl]{shipment card, certificate buttons} (0,9.6);
+  \draw[msg] (0,10.6) -- node[msglbl]{taps "Mill test certificate"} (3.2,10.6);
+  \draw[msg] (3.2,11.6) -- node[msglbl]{GET /qr/<token>/documents/<code>} (6.4,11.6);
+  \draw[msg] (6.4,12.6) -- node[msglbl]{document belongs to this record?} (9.6,12.6);
+  \draw[msg] (6.4,13.8) -- node[msglbl,pos=0.6]{sign URL, 300 s} (12.8,13.8);
+  \draw[reply] (6.4,15.4) -- node[msglbl]{\{url, expiresIn: 300\}} (3.2,15.4);
+  \draw[msg] (3.2,16.4) -- node[msglbl,pos=0.75]{GET signed URL (PDF)} (12.8,16.4);
+\end{tikzpicture}

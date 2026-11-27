@@ -1,0 +1,157 @@
+\makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
+\documentclass[11pt,a4paper]{article}
+\usepackage{spirdoc}
+\SetDoc{SPIR-SCP-001}{Scope, Limitations, Risks and Roadmap}{1.0}{Issued for review}
+\Revisions{%
+  1.0 & 27 Nov 2026 & \SPIRAuthor & First issue for release \SPIRRelease.\\
+}
+
+\begin{document}
+\MakeCover{What this proof of concept covers and does not cover, its known limitations and risks, and the phases needed to reach production.}
+\DocumentControl
+\tableofcontents
+\clearpage
+
+\section{Purpose}
+This document sets expectations. It states the scope of work delivered in release \SPIRRelease, what is deliberately
+left out, the limitations a user or vendor will meet, the risks with their owners and treatment, and a phased
+roadmap to production. Detailed per-requirement status is in SPIR-RTM-001.
+
+% =====================================================================================
+\section{Scope of work}
+\subsection{In scope (delivered)}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{4cm}Y@{}}
+  \thead\hd{Area} & \hd{Delivered in release \SPIRRelease}\\\endhead
+  Portals & Supplier portal and company portal at separate addresses, each with a sign-in page (admin / admin).\\
+  Supplier data & Supplier profile; shipments by form (add, edit) or CSV (many at once); field- and row-level validation; versioned history.\\
+  Identification & Part number, PO + line, heat, quantity, pattern, supplier (mandatory); RT, description, material, revision, country (optional), as on real receiving labels.\\
+  Certificates & Upload of MTC, CoC, RT report and other types; private storage; 5-minute links.\\
+  QR labels & One QR per shipment; short tokens; logo; scan check; A4 sticker sheets 8/14/21; PNG export; replace and revoke.\\
+  Scanning & Public scan page for any phone; company scanner with camera, webcam, photo or handheld scanner.\\
+  Company search & All suppliers' shipments by PO, part, heat or record.\\
+  Label check & OCR and barcode reading in the browser; record resolution; field-by-field comparison; review; discrepancies.\\
+  Integrity & Immutable approved versions; append-only audit; supplier isolation.\\
+  Design & Approved cozy-glass visual system; responsive pages; accessible contrast.\\
+  Engineering & 63 automated tests, CI on every push, Codespaces, deployment workflows, numbered migrations, this documentation set.\\
+\end{xltabular}}
+
+\subsection{Out of scope (not delivered)}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{4cm}Y L{2.6cm}@{}}
+  \thead\hd{Item} & \hd{Note} & \hd{Planned phase}\\\endhead
+  Individual accounts, RBAC, SSO & Two shared accounts only. & Phase 1\\
+  Approval workflow & Built in 0.1--0.4, archived on \code{archive/roles-and-review}. & Phase 1\\
+  Supplier user administration & One account per supplier is not yet possible. & Phase 1\\
+  Production hosting and monitoring & PoC runs in Codespaces / Neon free tier. & Phase 2\\
+  Security testing & No SAST, DAST or penetration test yet. & Phase 2\\
+  Malware scanning of uploads & Type and size checks only. & Phase 2\\
+  X12 EDI (832/841, 997/999, 824) & Not started; data model ready (\code{source = EDI}). & Phase 3\\
+  ERP integration & No link to the company ERP (POs, receipts). & Phase 3\\
+  Admin screens & Categories, attributes, label profiles changed through migrations. & Phase 2\\
+  Offline capture, edge connectors, device management & Browser-direct devices only. & Phase 4\\
+  Automatic perspective correction, profile onboarding & Manual crop; known profile only. & Phase 4\\
+\end{xltabular}}
+
+% =====================================================================================
+\section{Limitations}
+These are the limits a user or a vendor will meet in release \SPIRRelease.
+
+\begin{caution}[Not ready for real data on a public address]
+The sign-in is \code{admin} / \code{admin} for both portals and is the same for everyone. QR scans are open by
+design. Use real data only on a private address (for example a Codespace with private ports) until Phase 1 is done.
+\end{caution}
+
+\subsection{Access and accounts}
+\begin{itemize}
+  \item One shared supplier account that belongs to one supplier at a time. Several suppliers cannot work in parallel
+    without changing the profile.
+  \item One shared company account; actions are audited as ``Company admin'', not per person.
+  \item No password change, lock-out or session revocation screen; sessions expire after 12 hours.
+\end{itemize}
+
+\subsection{Data and workflow}
+\begin{itemize}
+  \item Saves are live at once: there is no review before data reaches a QR scan. Mistakes are corrected by a new
+    version; the wrong version stays in the history.
+  \item Part number, PO and line cannot be changed after saving; a wrong one means a new shipment and revoking the
+    old label.
+  \item No deletion of shipments (by design for traceability); no supplier deactivation screen.
+\end{itemize}
+
+\subsection{QR labels and scanning}
+\begin{itemize}
+  \item QR codes contain the web address set in \code{PUBLIC\_APP\_URL}. Labels printed with a Codespace address need a
+    GitHub sign-in on the phone and stop working when the Codespace is deleted.
+  \item Anyone holding a label (or a photo of it) can see that shipment and its certificates.
+  \item The rate limiter lives in each function instance; it is a speed bump, not a guarantee.
+\end{itemize}
+
+\subsection{Label check (OCR)}
+\begin{itemize}
+  \item Tesseract.js reads full-frame phone photos poorly (26--35\,\% word confidence in our tests). Good results need a
+    tight crop of the label and original-resolution photos; glare and stamps can make a label unresolvable.
+  \item Only the \code{RECEIVING\_LABELS v1} profile exists; new label layouts need a profile change.
+  \item No automatic deskew or perspective correction.
+\end{itemize}
+
+\subsection{Operations}
+\begin{itemize}
+  \item No metrics, alerting, backups policy or tested restore; Neon's built-in point-in-time restore is not configured
+    or tested.
+  \item The Neon production database had only migration 001 applied at the time of writing.
+  \item Credentials pasted during set-up (database password, storage keys, QR key) must be treated as exposed and
+    rotated (see risk R-04).
+\end{itemize}
+
+% =====================================================================================
+\section{Risk register}
+Likelihood (L) and impact (I): High, Medium, Low.
+
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{1.0cm}Y L{1.3cm}L{1.3cm}Y L{1.8cm}@{}}
+  \thead\hd{ID} & \hd{Risk} & \hd{L} & \hd{I} & \hd{Treatment} & \hd{Owner}\\\endhead
+  R-01 & Shared admin/admin credentials allow anyone who learns them to change data. & \High & \High & Keep on private address; Phase 1 RBAC and SSO before go-live. & Business owner\\
+  R-02 & Public QR scans expose shipment data and certificates to anyone with the label. & \Med & \Med & Decision recorded (ADR-09); confirm or require company sign-in before production; revoke leaked labels. & Business owner\\
+  R-03 & No review before data is live: a supplier error reaches receiving immediately. & \Med & \Med & Label check catches mismatches; Phase 1 restores approval workflow. & Quality\\
+  R-04 & Credentials were shared in chat during set-up. & \High & \High & Rotate the Neon database password, storage keys and QR key; never paste \code{.env}. & IT / author\\
+  R-05 & OCR accuracy on real photos is not measured on a representative set. & \Med & \Med & Collect 100+ labelled photos; measure precision/recall per field (NFR-OCR-001). & Quality\\
+  R-06 & QR labels printed with a temporary address stop working. & \Med & \High & Set \code{PUBLIC\_APP\_URL} to the permanent address before printing for real parts. & IT\\
+  R-07 & Losing \code{QR\_TOKEN\_KEY} prevents reprinting existing labels (scans still work). & \Low & \Med & Store the key in a password manager and GitHub secret. & IT\\
+  R-08 & Free-tier hosting limits (Neon, Codespaces) interrupt demos. & \Med & \Low & Move to paid tier or company hosting in Phase 2. & IT\\
+  R-09 & Uploaded files are not malware-scanned. & \Low & \High & Add scanning in Phase 2; keep the bucket private. & IT\\
+  R-10 & Real data committed to the public repository by mistake. & \Low & \High & Real data only in git-ignored \code{seed/local/}; review pull requests. & Developers\\
+\end{xltabular}}
+
+% =====================================================================================
+\section{Known issues}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{1.2cm}Y Y@{}}
+  \thead\hd{ID} & \hd{Issue} & \hd{Work-around}\\\endhead
+  KI-01 & \code{npm run dev} and \code{npm run dev:memory} cannot run at the same time (port 8787 in use). & Stop the other one (Ctrl+C) or run \code{npx kill-port 8787 5173}.\\
+  KI-02 & Real photos 1 and 3 of the sample set are unresolvable (glare, stamp over fields). & Retake with even light; crop tightly; correct fields manually.\\
+  KI-03 & The OpenAPI file lists v0.5 changes in a note; some paths are not yet updated. & Use the endpoint table in SPIR-SDD-001.\\
+  KI-04 & In the demo data the supplier account belongs to the first supplier (Falcon Crest Foundry). & Change the profile, or start with \code{npm run dev:empty}.\\
+  KI-05 & Web fonts load from Google Fonts; offline sites fall back to system fonts. & None needed.\\
+\end{xltabular}}
+
+% =====================================================================================
+\section{Roadmap}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{2.4cm}Y L{3.4cm}@{}}
+  \thead\hd{Phase} & \hd{Content} & \hd{Requirements}\\\endhead
+  \textbf{Phase 1}\newline Accounts and control & Individual accounts; roles (supplier user, reviewer, inspector, administrator, auditor); company SSO; one login per supplier user; bring back draft/submit/approve/reject from \code{archive/roles-and-review}; decide on public scans; supplier activation screens; password policy. & FR-SUP-003, FR-SUP-005, FR-WF-001..009, FR-QR-003, FR-ADM-002, NFR-SEC-001\\
+  \textbf{Phase 2}\newline Production readiness & Company or paid hosting; permanent address; backups and tested restore; monitoring, metrics, alerts; security testing (dependencies, SAST, DAST, penetration test); malware scanning; admin screens for attributes and label profiles; agree NFR targets; refresh OpenAPI. & NFR-AV/PERF/DR/RET/OBS, NFR-SEC-002, FR-DOC-007, FR-ADM-001\\
+  \textbf{Phase 3}\newline Integration & X12 832/841 intake, validation, mapping, 997/999 and 824 acknowledgements, quarantine and replay; ERP link for POs and goods receipts. & FR-EDI-001..014, FR-SUP-006/007, NFR-INT-001\\
+  \textbf{Phase 4}\newline Inspection at scale & OCR accuracy programme (labelled photo set, per-field thresholds); automatic perspective correction; new label profiles and onboarding; fixed cameras and edge connector; device compatibility matrix; offline capture. & FR-OCR-002/018, FR-DEV-004..010, NFR-OCR-001/002, NFR-DEV-001\\
+\end{xltabular}}
+
+\begin{keypoint}[Decisions needed from the business owner]
+\begin{enumerate}
+  \item Keep QR scans public, or require a company sign-in (affects \req{FR-QR-003}, \req{FR-DOC-005})?
+  \item When must the approval step return, and who reviews?
+  \item Which permanent web address will be printed in QR codes?
+  \item Who owns the risks R-01, R-02 and R-04, and the Phase 1 budget?
+\end{enumerate}
+\end{keypoint}
+\end{document}

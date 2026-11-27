@@ -1,0 +1,174 @@
+\makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
+\documentclass[11pt,a4paper]{article}
+\usepackage{spirdoc}
+\SetDoc{SPIR-OPS-001}{Deployment and Operations Guide}{1.0}{Issued for review}
+\Revisions{%
+  1.0 & 27 Nov 2026 & \SPIRAuthor & First issue for release \SPIRRelease.\\
+}
+\newenvironment{cmd}{\begin{commandbox}\obeylines}{\end{commandbox}}
+
+\begin{document}
+\MakeCover{How to run, configure, deploy, maintain and troubleshoot SPIR: environments, set-up, CI/CD, secrets and support tasks.}
+\DocumentControl
+\tableofcontents
+\clearpage
+
+\section{Environments}
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{3.2cm}Y Y@{}}
+  \thead\hd{Environment} & \hd{What runs} & \hd{Data}\\
+  Codespace, in-memory & \code{npm run dev:memory} or \code{dev:empty}: API with PGlite and memory storage, web app on port 5173. & Demo seed (plus private \code{seed/local/*.csv}), or empty. Lost on restart.\\
+  Codespace + Neon & \code{npm run dev}: local API and web app against the Neon database and bucket. & Neon branch \code{production}.\\
+  Published & Web app on GitHub Pages; API as Neon Function \code{spirapi}; deployed by GitHub Actions. & Neon branch \code{production}.\\
+\end{tabularx}}
+\Diagram[0.45]{deployment}{Deployment view.}
+
+\section{Prerequisites}
+\begin{itemize}
+  \item GitHub account with access to \href{\SPIRRepoURL}{\SPIRRepo}; Codespaces enabled.
+  \item Neon project with Postgres branch \code{production}, Object Storage bucket \code{spir} and a function slot.
+  \item For local machines instead of Codespaces: Node 24, npm, and optionally the Neon CLI (\code{npm i -g neon}).
+  \item To build the documentation: a TeX distribution with \code{latexmk} (TeX Live 2023 or later).
+\end{itemize}
+
+\section{Running in a Codespace}
+\subsection{Quick start (no database needed)}
+\begin{cmd}
+git pull
+npm install
+npm run dev:memory\qquad\# demo data;\quad npm run dev:empty for an empty registry
+\end{cmd}
+Open the \ui{Ports} tab, open port \textbf{5173}, and add \code{/\#/supplier} or \code{/\#/company} to the address. Both
+portals sign in with \code{admin} / \code{admin}. Keep the ports \emph{private} (GitHub asks for sign-in) when real
+data is present.
+
+\subsection{Against the Neon database}
+\begin{enumerate}
+  \item \code{npm run db:connect} --- paste the connection string from Neon console \(\rightarrow\) project \(\rightarrow\)
+    \ui{Connect} (branch \code{production}, database \code{neondb}). Input is hidden; the connection is tested before
+    \code{.env} is written.
+  \item Generate the QR key once and put it in \code{.env} as \code{QR\_TOKEN\_KEY}:
+\begin{cmd}
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+\end{cmd}
+  \item Optional: Neon Object Storage keys (\code{AWS\_*}, \code{SPIR\_BUCKET}); without them files go to \code{.data/storage}.
+  \item \code{npm run db:setup} (migrations, then demo seed) and \code{npm run dev}.
+\end{enumerate}
+
+\begin{warningbox}[Never share .env]
+\code{.env} holds the database password, storage keys and QR key. It is git-ignored; never paste it into chat,
+tickets or e-mail. If it was shared, rotate every value in it (see section~\ref{sec:rotate}).
+\end{warningbox}
+
+\section{Configuration reference}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{4.4cm}L{1.6cm}Y@{}}
+  \thead\hd{Variable} & \hd{Required} & \hd{Meaning}\\\endhead
+  \code{DATABASE\_URL} & Yes (Neon) & Postgres connection, ending \code{?sslmode=verify-full}.\\
+  \code{QR\_TOKEN\_KEY} & Yes & 32 random bytes, base64. Same value everywhere that shares the database, or existing labels cannot be reprinted.\\
+  \code{AWS\_ACCESS\_KEY\_ID}, \code{AWS\_SECRET\_ACCESS\_KEY} & No & Neon Object Storage credentials.\\
+  \code{AWS\_ENDPOINT\_URL\_S3}, \code{AWS\_REGION}, \code{SPIR\_BUCKET} & No & Storage endpoint, region (\code{us-east-2}), bucket (\code{spir}).\\
+  \code{PUBLIC\_APP\_URL} & Before printing & Address printed inside QR codes, e.g. \code{https://musman1993.github.io/spir}.\\
+  \code{ALLOWED\_ORIGINS} & No & CORS origins (default \code{*}).\\
+  \code{PORT} & No & Local API port (8787).\\
+  \code{LOCAL\_STORAGE\_DIR} & No & Folder for files when no bucket is configured.\\
+\end{xltabular}}
+
+\section{Database}
+\begin{itemize}
+  \item \code{npm run db:migrate} applies new files from \fpath{api/db/migrations/} in order and records them in
+    \code{spir.schema\_migrations}. Safe to run repeatedly.
+  \item \code{npm run db:seed} loads \fpath{seed/spir_seed.csv} plus \fpath{seed/local/*.csv}.
+  \item \code{npm run db:reset} drops and recreates schema \code{spir} --- \textbf{all data is lost}.
+  \item New migration: add \code{007\_<name>.sql}, start with \code{SET LOCAL search\_path TO spir, public;}, never edit an
+    applied file.
+\end{itemize}
+\begin{caution}[Status at the time of writing]
+The Neon \code{production} branch had only \code{001\_init.sql} applied. Run \code{npm run db:setup} once to apply
+002--006 and load the demo data.
+\end{caution}
+
+\section{CI/CD}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{3.4cm}L{3.4cm}Y@{}}
+  \thead\hd{Workflow} & \hd{Trigger} & \hd{What it does}\\\endhead
+  \fpath{ci.yml} & Push to main, pull requests & Install, typecheck API and web, run API tests, build web.\\
+  \fpath{deploy-web.yml} & Push to main (web changes) & Build with \code{VITE\_API\_BASE\_URL} and \code{BASE\_PATH}; publish to GitHub Pages.\\
+  \fpath{deploy-api.yml} & Push to main (API changes) & \code{neon deploy} to branch \code{production}, then \code{npm run db:migrate}.\\
+  \fpath{docs.yml} & Changes under \fpath{docs/latex/} & Build every PDF with latexmk; attach them to the run as the \code{spir-documentation} artifact.\\
+\end{xltabular}}
+
+\subsection{Repository settings}
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{1.8cm}L{4cm}Y@{}}
+  \thead\hd{Type} & \hd{Name} & \hd{Value}\\
+  Secret & \code{NEON\_API\_KEY} & Neon API key for deployments.\\
+  Secret & \code{QR\_TOKEN\_KEY} & Same as in \code{.env}.\\
+  Variable & \code{NEON\_PROJECT\_ID} & Neon project ID.\\
+  Variable & \code{SPIR\_API\_URL} & Public URL of \code{spirapi} (for the web build).\\
+  Variable & \code{SPIR\_WEB\_ORIGIN}, \code{SPIR\_WEB\_URL} & Pages origin (CORS) and full Pages URL (printed in QR codes).\\
+  Variable & \code{BASE\_PATH} & Pages sub-path, e.g. \code{/spir/}.\\
+\end{tabularx}}
+GitHub Pages must be enabled with source ``GitHub Actions''.
+
+\section{Routine operations}
+\subsection{Rotating secrets}\label{sec:rotate}
+\begin{enumerate}
+  \item \textbf{Database password}: Neon console \(\rightarrow\) Roles \(\rightarrow\) \code{neondb\_owner} \(\rightarrow\)
+    reset; then \code{npm run db:connect} in each Codespace.
+  \item \textbf{Storage keys}: Neon console \(\rightarrow\) Credentials: revoke the old key, create a new pair; update
+    \code{.env} and the Neon function variables.
+  \item \textbf{QR key}: changing it stops reprinting of existing labels (scans keep working). Change it only before
+    labels are printed, or reissue labels afterwards (rotate each label).
+  \item \textbf{Sessions}: changing \code{QR\_TOKEN\_KEY} also signs everyone out.
+\end{enumerate}
+
+\subsection{Changing the address printed in QR codes}
+Set \code{PUBLIC\_APP\_URL} (and the \code{SPIR\_WEB\_URL} variable), redeploy, then reprint labels. Printed labels keep
+the address they were printed with.
+
+\subsection{Company logo on labels}
+Put the logo in \fpath{web/public/brand/} as \code{logo.png} (square, white or transparent background) or
+\code{logo.svg}; PNG wins if both exist. Reload the QR labels page; the scan check confirms every code still reads.
+
+\subsection{Real data}
+Real shipment CSVs go in \fpath{seed/local/} and real label photos in \fpath{api/test/fixtures/local/}; both are
+git-ignored. Never commit real POs, supplier names or photos: the repository is public.
+
+\subsection{Backups}
+Neon keeps point-in-time history for the branch according to the plan. Before risky changes, create a Neon branch
+(snapshot) of \code{production}. A restore procedure and RPO/RTO targets are still to be agreed (SPIR-SCP-001).
+
+\section{Building this documentation}
+\begin{cmd}
+cd docs/latex
+make\qquad\qquad\# builds all nine PDFs into docs/latex/build/
+make clean
+\end{cmd}
+Each document compiles on its own (\code{latexmk -pdf} in its folder). Shared style and facts:
+\fpath{shared/spirdoc.sty}, \fpath{shared/project.tex} (release number and date --- update on every release);
+diagrams: \fpath{diagrams/*.tex}; traceability data: \fpath{04-traceability/rtm.csv}.
+
+\section{Troubleshooting}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{4.2cm}Y Y@{}}
+  \thead\hd{Symptom} & \hd{Cause} & \hd{Fix}\\\endhead
+  \code{npm: command not found} in a new Codespace & Codespace in recovery mode (old container). & Rebuild the container (Command Palette: \emph{Codespaces: Rebuild Container}); the dev container now installs Node 24.\\
+  \code{getaddrinfo ENOTFOUND HOST}, or ``DATABASE\_URL is still the example placeholder'' & \code{.env} still has \code{USER:PASSWORD@HOST}, or an old terminal variable overrides it. & \code{npm run db:connect}; or \code{unset DATABASE\_URL DATABASE\_URL\_UNPOOLED} and check \code{.env}.\\
+  SSL mode warning from \code{pg} & \code{sslmode=require} in the URL. & Use \code{sslmode=verify-full}.\\
+  \code{EADDRINUSE :::8787} & Another \code{npm run dev*} is still running. & Ctrl+C in that terminal, or \code{npx kill-port 8787 5173}.\\
+  Phone asks for GitHub sign-in when scanning & Label printed with a Codespace address. & Set \code{PUBLIC\_APP\_URL} to the permanent address and reprint.\\
+  Camera does not start & No permission, or not HTTPS. & Allow the camera; use the HTTPS forwarded address.\\
+  ``Set up your supplier profile first'' & Supplier account has no supplier yet. & Supplier portal \(\rightarrow\) Profile.\\
+  CSV rejected & At least one row invalid. & Fix every row listed; the import is all-or-nothing.\\
+  QR shows ``revoked'' & Label was replaced or revoked. & Print the current label from the shipment page.\\
+\end{xltabular}}
+
+\section{Support checklist for a new release}
+\begin{enumerate}
+  \item All CI checks green; documentation builds.
+  \item Update \fpath{docs/latex/shared/project.tex} (release, date), release notes, traceability CSV.
+  \item Merge to main; check deploy-api and deploy-web runs; migrations applied.
+  \item Smoke test: sign in to both portals, add a shipment, scan its label on a phone, run a label check.
+\end{enumerate}
+\end{document}

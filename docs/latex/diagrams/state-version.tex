@@ -1,0 +1,20 @@
+% UML state machine of a product / traceability version.
+% Solid: the lifecycle used in release 0.5. Dashed grey: the review lifecycle built in 0.1-0.4, kept on branch archive/roles-and-review.
+\begin{tikzpicture}[node distance=12mm and 20mm]
+  \node[initial] (i) {};
+  \node[state,right=30mm of i] (ap) {APPROVED\\[-1pt]\mdseries\scriptsize live; QR scans show it};
+  \node[state,right=24mm of ap,fill=spirmist,draw=spirgreyink] (su) {SUPERSEDED\\[-1pt]\mdseries\scriptsize history, read only};
+  \node[stateoff,below=16mm of i,xshift=16mm] (dr) {DRAFT};
+  \node[stateoff,right=16mm of dr] (pe) {PENDING};
+  \node[stateoff,right=16mm of pe] (re) {REJECTED};
+  \node[stateoff,below=12mm of pe] (wd) {WITHDRAWN};
+  \draw[flow] (i) -- node[lbl,above=1pt]{save (form / CSV)} (ap);
+  \draw[flow] (ap) -- node[lbl,above=1pt]{a changed save} (su);
+  \draw[dflow,spirgrey] (i) |- (dr);
+  \draw[dflow,spirgrey] (dr) -- node[lbl]{submit} (pe);
+  \draw[dflow,spirgrey] (pe) -- node[lbl]{reject} (re);
+  \draw[dflow,spirgrey] (pe) -- node[lbl,right=2pt]{approve} (ap);
+  \draw[dflow,spirgrey] (pe) -- node[lbl]{withdraw} (wd);
+  \draw[dflow,spirgrey] (re.south) |- node[lbl,pos=0.75]{correct + resubmit} ([yshift=-3mm]pe.south east);
+  \node[note=48mm,anchor=north west] at ([xshift=4mm,yshift=-2mm]re.north east) {Release 0.5: every save is published at once (solid path). The dashed review path is designed and archived; it returns with role-based access.};
+\end{tikzpicture}

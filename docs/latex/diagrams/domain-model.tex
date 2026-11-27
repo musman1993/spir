@@ -1,0 +1,35 @@
+% UML class diagram of the registry's domain model (Postgres schema "spir").
+\begin{tikzpicture}[node distance=9mm and 9mm,
+  mult/.style={font=\sffamily\tiny,text=spirink2,inner sep=1pt},
+  assoc/.style={draw=spirink2,line width=0.6pt},
+  comp/.style={draw=spirink2,line width=0.6pt,{Diamond[fill=spirink2,length=2.6mm]}-}]
+  \node[umlclass] (sup) {\textbf{Supplier}\nodepart{second}supplier\_code: SUP-nnnnnn\\legal\_name, country\_code\\status, contact details};
+  \node[umlclass,right=of sup] (usr) {\textbf{AppUser}\nodepart{second}id: supplier-admin | company-admin\\role: SUPPLIER | COMPANY\\supplier\_id (supplier only)};
+  \node[umlclass,below=of sup] (prd) {\textbf{Product}\nodepart{second}product\_code: PRD-nnnnnnn\\category\_code\\current\_approved\_version\_id};
+  \node[umlclass,left=of prd] (pid) {\textbf{ProductIdentifier}\nodepart{second}id\_type: COMPANY\_PART\_NUMBER\\| SUPPLIER\_PART\_NUMBER | ...\\value, normalized\_value};
+  \node[umlclass,right=of prd] (pv) {\textbf{ProductVersion}\nodepart{second}version\_no, status\\name, description\\attributes: JSONB};
+  \node[umlclass,below=of prd] (trc) {\textbf{TraceabilityRecord}\nodepart{second}traceability\_code: TRC-nnnnnnn\\external\_ref (PO-line key)\\current\_approved\_version\_id};
+  \node[umlclass,right=of trc] (tv) {\textbf{TraceabilityVersion}\nodepart{second}version\_no, status, source\\attributes: JSONB (PO, line, qty,\\pattern, RT, ...) --- immutable when approved};
+  \node[umlclass,below=of tv] (heat) {\textbf{Heat} / \textbf{Batch}\nodepart{second}heat\_number, batch\_number\\(many-to-many: batch\_heat)};
+  \node[umlclass,left=of trc] (qr) {\textbf{QrToken}\nodepart{second}token\_hash (SHA-256)\\token\_ciphertext (AES-256-GCM)\\status: ACTIVE | REVOKED};
+  \node[umlclass,below=of trc] (doc) {\textbf{Document}\nodepart{second}document\_code, doc\_type\\storage\_key, sha256, size\\file\_name, media\_type};
+  \node[umlclass,below=of qr] (vr) {\textbf{ValidationRun}\nodepart{second}run\_code, overall\_status\\pinned version + rule versions\\extraction, image evidence};
+  \node[umlclass,below=of vr] (vf) {\textbf{ValidationFieldResult}\nodepart{second}attribute\_key, result\\observed / normalized / approved\\confidence, review};
+  \node[umlclass,right=of vf] (disc) {\textbf{Discrepancy}\nodepart{second}severity, status\\fields, comment};
+  \node[umlclass,right=of disc,xshift=10mm] (aud) {\textbf{AuditEvent}\nodepart{second}actor, action, object\\details, correlation\_id\\append-only (trigger)};
+  \node[umlclass,above=of usr,xshift=-2mm] (attr) {\textbf{AttributeDefinition}\nodepart{second}attribute\_key, version, scope\\data\_type, required, critical\\comparison\_rule, label\_checked};
+  \node[umlclass,left=of attr] (lp) {\textbf{LabelProfile}\nodepart{second}profile\_key, version\\config: aliases, patterns,\\thresholds (JSONB)};
+
+  \draw[assoc] (sup) -- node[mult,above,pos=0.2]{0..1} node[mult,above,pos=0.85]{0..*} (usr);
+  \draw[comp] (sup) -- node[mult,right,pos=0.85]{0..*} (prd);
+  \draw[comp] (prd) -- node[mult,above,pos=0.8]{1..*} (pid);
+  \draw[comp] (prd) -- node[mult,above,pos=0.8]{1..*} (pv);
+  \draw[comp] (prd) -- node[mult,right,pos=0.85]{0..*} (trc);
+  \draw[comp] (trc) -- node[mult,above,pos=0.8]{1..*} (tv);
+  \draw[assoc] (tv) -- node[mult,right,pos=0.2]{0..*} node[mult,right,pos=0.85]{0..*} (heat);
+  \draw[assoc] (trc) -- node[mult,above,pos=0.2]{1} node[mult,above,pos=0.85]{0..*} (qr);
+  \draw[assoc] (tv.south west) -- node[mult,right,pos=0.85]{0..*} (doc.north east);
+  \draw[assoc] (vr) -- node[mult,above,sloped,pos=0.75]{pins 0..1} (trc.south west);
+  \draw[comp] (vr) -- node[mult,right,pos=0.8]{1..*} (vf);
+  \draw[assoc] (vf) -- node[mult,above,pos=0.85]{0..1} (disc);
+\end{tikzpicture}

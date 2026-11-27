@@ -1,0 +1,157 @@
+\makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
+\documentclass[10pt,a4paper]{article}
+\usepackage{spirdoc}
+\SetDoc{SPIR-RTM-001}{Requirements Traceability Matrix}{1.0}{Issued for review}
+\Revisions{%
+  1.0 & 27 Nov 2026 & \SPIRAuthor & First issue: all 127 requirements of spec v1.1 assessed against release \SPIRRelease.\\
+}
+
+% ---- Reading rtm.csv -----------------------------------------------------------
+% rtm.csv is the single source of this matrix. One row per spec requirement:
+%   id | area | priority | requirement | status | evidence
+% status: I implemented, P partial, D deferred by decision, V deviation by decision,
+%         N not started, O target still to define (non-functional).
+\newcommand{\statustag}[1]{\edef\rtmst{#1}\expandafter\statustagx\expandafter{\rtmst}}
+\newcommand{\statustagx}[1]{%
+  \ifstrequal{#1}{I}{\Done}{%
+  \ifstrequal{#1}{P}{\Partial}{%
+  \ifstrequal{#1}{D}{\Deferred}{%
+  \ifstrequal{#1}{V}{\Deviation}{%
+  \ifstrequal{#1}{N}{\NotStarted}{\OpenItem}}}}}}
+\input{rtmcount.tex}
+\newcommand{\arearow}[1]{#1 & \rtm{#1}{all} & \rtm{#1}{I} & \rtm{#1}{P} & \rtm{#1}{D} & \rtm{#1}{V} & \rtm{#1}{N} & \rtm{#1}{O}\\}
+% Requirements of one area, as a long table.
+\newcommand{\areatable}[1]{%
+  {\footnotesize
+  \csvreader[separator=pipe,respect all,head to column names,
+    filter equal={\area}{#1},
+    before reading={\setlength{\LTpre}{2pt}\setlength{\LTpost}{6pt}\zebra},
+    longtable={@{}L{1.85cm}L{0.6cm}L{5.3cm}L{1.95cm}L{4.95cm}@{}},
+    table head={\thead\hd{ID} & \hd{Pri.} & \hd{Requirement (spec v1.1)} & \hd{Status} & \hd{Evidence in release \SPIRRelease}\\\endhead},
+  ]{rtm.csv}{}{\textbf{\id} & \priority & \requirement & \statustag{\status} & \evidence}}}
+
+\begin{document}
+\MakeCover{Every requirement of the \SPIRSpec, mapped to what release \SPIRRelease\ does, with the evidence and the reason for every gap.}
+\DocumentControl
+\tableofcontents
+\clearpage
+
+\section{Purpose and how to read this matrix}
+This matrix shows, requirement by requirement, how far the SPIR proof of concept meets the \emph{\SPIRSpec}.
+It is the reference for scope discussions with the vendor and for deciding what the next phases must deliver.
+
+Each requirement has one status:
+
+{\small
+\begin{tabularx}{\linewidth}{@{}L{3.1cm}Y@{}}
+  \Done & Built and covered by automated tests or verified in the browser.\\
+  \Partial & Part of the requirement is built; the evidence column says what is missing.\\
+  \Deferred & Built in an earlier release and removed in release 0.5 by a stakeholder decision. The code is kept on the git branch \fpath{archive/roles-and-review}.\\
+  \Deviation & Deliberately different from the specification, by a stakeholder decision, with the risk recorded in SPIR-SCP-001.\\
+  \NotStarted & Not built in this proof of concept; planned for a later phase.\\
+  \OpenItem & A non-functional target the specification asks the project to define; not yet set.\\
+\end{tabularx}}
+
+\begin{keypoint}[Maintaining this matrix]
+The rows come from \fpath{docs/latex/04-traceability/rtm.csv} (one line per requirement, fields separated by \code{|}).
+When a change moves a requirement forward, edit its status and evidence in that file in the same pull request; the
+summary counts below are calculated when the PDF is built.
+\end{keypoint}
+
+\section{Summary}
+\subsection{Overall}
+Of the \textbf{\rtm{all}{all} requirements} in the specification, release \SPIRRelease:
+
+\begin{center}
+\begin{tikzpicture}[x=1mm,y=1mm]
+  \def\tot{\rtm{all}{all}}
+  \pgfmathsetmacro{\wI}{140*\rtm{all}{I}/\tot}\pgfmathsetmacro{\wP}{140*\rtm{all}{P}/\tot}
+  \pgfmathsetmacro{\wD}{140*\rtm{all}{D}/\tot}\pgfmathsetmacro{\wV}{140*\rtm{all}{V}/\tot}
+  \pgfmathsetmacro{\wN}{140*\rtm{all}{N}/\tot}\pgfmathsetmacro{\wO}{140*\rtm{all}{O}/\tot}
+  \fill[spirgreen] (0,0) rectangle ++(\wI,7);
+  \fill[spiramber] (\wI,0) rectangle ++(\wP,7);
+  \fill[spiryellow] ({\wI+\wP},0) rectangle ++(\wD,7);
+  \fill[spirred] ({\wI+\wP+\wD},0) rectangle ++(\wV,7);
+  \fill[spirgrey!70] ({\wI+\wP+\wD+\wV},0) rectangle ++(\wN,7);
+  \fill[spirgrey!35] ({\wI+\wP+\wD+\wV+\wN},0) rectangle ++(\wO,7);
+\end{tikzpicture}
+\end{center}
+
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{3.2cm}L{1.6cm}L{1.6cm}Y@{}}
+  \thead\hd{Status} & \hd{Count} & \hd{Share} & \hd{Meaning for the next phase}\\
+  \Done & \rtm{all}{I} & \pct{\rtm{all}{I}} & Keep; harden for production (security testing, monitoring).\\
+  \Partial & \rtm{all}{P} & \pct{\rtm{all}{P}} & Finish the missing part listed per requirement.\\
+  \Deferred & \rtm{all}{D} & \pct{\rtm{all}{D}} & Bring back the approval workflow with role-based access (archive branch).\\
+  \Deviation & \rtm{all}{V} & \pct{\rtm{all}{V}} & Confirm or reverse the decision on open QR scans before production.\\
+  \NotStarted & \rtm{all}{N} & \pct{\rtm{all}{N}} & Mostly X12 EDI, supplier user administration and device management.\\
+  \OpenItem & \rtm{all}{O} & \pct{\rtm{all}{O}} & Agree availability, performance, recovery and retention targets.\\
+\end{tabularx}}
+
+\subsection{By area}
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}Y*{7}{>{\centering\arraybackslash}p{1.25cm}}@{}}
+  \thead\hd{Area} & \hd{Total} & \hd{Impl.} & \hd{Partial} & \hd{Defer.} & \hd{Dev.} & \hd{Not st.} & \hd{Define}\\
+  \arearow{Supplier}
+  \arearow{Product}
+  \arearow{Traceability}
+  \arearow{Attributes}
+  \arearow{Documents}
+  \arearow{Workflow}
+  \arearow{QR codes}
+  \arearow{X12 EDI}
+  \arearow{Administration}
+  \arearow{Devices}
+  \arearow{Label OCR}
+  \arearow{Non-functional}
+  \rowcolor{spirwash}\textbf{All} & \textbf{\rtm{all}{all}} & \textbf{\rtm{all}{I}} & \textbf{\rtm{all}{P}} & \textbf{\rtm{all}{D}} & \textbf{\rtm{all}{V}} & \textbf{\rtm{all}{N}} & \textbf{\rtm{all}{O}}\\
+\end{tabularx}}
+
+\subsection{What the numbers say}
+\begin{itemize}
+  \item \textbf{Strongest areas:} product and traceability data, documents, QR codes and the label-OCR check, which
+    together hold most of the implemented requirements. The OCR area meets all P0 requirements of the specification
+    except automatic perspective correction and unknown-profile onboarding.
+  \item \textbf{Workflow is deferred, not missing:} the full draft, submit, review, approve or reject cycle was built
+    and tested in releases 0.1 to 0.4. Release 0.5 publishes every save at once by decision, so these requirements
+    show as deferred.
+  \item \textbf{Two deliberate deviations:} \req{FR-QR-003} and \req{FR-DOC-005}. QR scans and the certificates they
+    link to are open to anyone with the label. This must be confirmed or reversed before real data goes live.
+  \item \textbf{Largest gap:} X12 EDI (all 14 requirements), which the specification describes as a separate intake
+    channel and which was out of scope for this proof of concept.
+  \item \textbf{Non-functional targets} (availability, performance, recovery, retention) still have to be agreed; the
+    application is ready to be measured against them.
+\end{itemize}
+
+\clearpage
+\section{Matrix by area}
+\subsection{Supplier}\areatable{Supplier}
+\subsection{Product}\areatable{Product}
+\subsection{Traceability}\areatable{Traceability}
+\subsection{Attributes}\areatable{Attributes}
+\subsection{Documents}\areatable{Documents}
+\subsection{Workflow}\areatable{Workflow}
+\subsection{QR codes}\areatable{QR codes}
+\subsection{X12 EDI}\areatable{X12 EDI}
+\subsection{Administration}\areatable{Administration}
+\subsection{Devices}\areatable{Devices}
+\subsection{Label OCR}\areatable{Label OCR}
+\subsection{Non-functional}\areatable{Non-functional}
+
+\section{Requirements added during the project}
+These come from the stakeholder sessions and the real receiving labels, not from spec v1.1. They are specified in
+SPIR-SRS-001.
+
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{2.4cm}Y L{2.4cm}@{}}
+  \thead\hd{SRS ID} & \hd{Requirement} & \hd{Status}\\
+  SPIR-FR-ID-01 & Identify a part by part number, PO number + line, heat number, quantity, pattern number and supplier (mandatory); RT number, description, material, revision optional. & \Done\\
+  SPIR-FR-ID-02 & Read quantity \code{02/02} as piece 2 of a quantity of 2. & \Done\\
+  SPIR-FR-QL-01 & QR labels must be readable by an ordinary phone camera; every printed code is decoded again before printing. & \Done\\
+  SPIR-FR-QL-02 & Company logo in the centre of the QR; Part \#, PO \#, Heat \# printed beside it; A4 sticker sheets 8/14/21. & \Done\\
+  SPIR-FR-PT-01 & Separate supplier and company portals, each with its own sign-in (admin / admin for the PoC). & \Done\\
+  SPIR-FR-PT-02 & The supplier account belongs to one supplier, set in its profile; every shipment uses that name. & \Done\\
+  SPIR-FR-PT-03 & Saved shipment data is live immediately (no approval step in this phase). & \Done\\
+  SPIR-FR-UI-01 & The approved glass visual system and brand colour palette across all pages. & \Done\\
+\end{tabularx}}
+\end{document}

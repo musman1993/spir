@@ -1,0 +1,25 @@
+% Workflow (UML activity): receiving inspection with the company portal.
+\begin{tikzpicture}[node distance=7mm and 10mm]
+  \node[initial] (s) {};
+  \node[activity,below=5mm of s] (a1) {Part arrives with a SPIR QR label and the supplier's sticker};
+  \node[activity,below=of a1] (a2) {Scan the QR (company portal or any phone)};
+  \node[decision,below=of a2] (q1) {Label\\valid?};
+  \node[activity,right=14mm of q1] (x1) {404 / 410: set the part aside, ask the supplier for a new label};
+  \node[activity,below=of q1] (a3) {Read the shipment: part, PO / line, qty, heats, pattern; open certificates};
+  \node[activity,below=of a3] (a4) {Check a product label: photo of the supplier sticker};
+  \node[decision,below=of a4] (q2) {Overall\\result};
+  \node[activity,left=12mm of q2] (r1) {PASS: accept};
+  \node[activity,right=12mm of q2] (r2) {FAIL: record a discrepancy, hold the part};
+  \node[activity,below=of q2] (r3) {NEEDS REVIEW / UNRESOLVED: confirm or correct fields, pick the record};
+  \node[activity,below=of r3] (a5) {Finalize the label check (kept as evidence)};
+  \node[final,below=5mm of a5] (e) {};
+  \draw[flow] (s) -- (a1); \draw[flow] (a1) -- (a2); \draw[flow] (a2) -- (q1);
+  \draw[flow] (q1) -- node[lbl]{no} (x1);
+  \draw[flow] (q1) -- node[lbl,right]{yes} (a3);
+  \draw[flow] (a3) -- (a4); \draw[flow] (a4) -- (q2);
+  \draw[flow] (q2) -- (r1); \draw[flow] (q2) -- (r2); \draw[flow] (q2) -- (r3);
+  \draw[flow] (r3) -- (a5);
+  \draw[flow] (r1) |- (a5);
+  \draw[flow] (r2) |- (a5);
+  \draw[flow] (a5) -- (e);
+\end{tikzpicture}

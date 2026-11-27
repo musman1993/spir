@@ -1,0 +1,297 @@
+\makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
+\documentclass[11pt,a4paper]{article}
+\usepackage{spirdoc}
+\SetDoc{SPIR-SRS-001}{Software Requirements Specification}{1.0}{Issued for review}
+\Revisions{%
+  1.0 & 27 Nov 2026 & \SPIRAuthor & First issue. Specifies release \SPIRRelease\ as built and agreed in the stakeholder sessions, traced to spec v1.1.\\
+}
+% Requirement table: \begin{reqs} ID & statement & priority & status & source \\ \end{reqs}
+\newenvironment{reqs}{\par\small\zebra\xltabular{\linewidth}{@{}L{2.35cm}Y L{1.25cm}L{2.0cm}L{1.85cm}@{}}
+  \thead\hd{ID} & \hd{Requirement} & \hd{Priority} & \hd{Release 0.5} & \hd{Source}\\\endhead}{\endxltabular}
+\newcommand{\must}{Must}\newcommand{\should}{Should}\newcommand{\could}{Could}
+
+\begin{document}
+\MakeCover{What the Supplier Product Information Registry must do: users, functions, data, interfaces and quality attributes, for release \SPIRRelease\ and the phases after it.}
+\DocumentControl
+\tableofcontents
+\clearpage
+
+% =====================================================================================
+\section{Introduction}
+\subsection{Purpose}
+This Software Requirements Specification (SRS) states what SPIR must do. It describes the application as built in
+release \SPIRRelease, including the decisions taken with the stakeholder during the project, and marks what is
+deferred to later phases. It is written for the vendor and developers who will build on it, for testers, and for the
+business owner who accepts it.
+
+\subsection{Scope}
+SPIR is a company-owned registry of \textbf{supplier product identity, manufacturing traceability and certificates}.
+Suppliers enter the data for each shipment and attach a QR label to the parts. At receiving, anyone can scan the label
+to see the shipment's data and certificates, and company staff can check the supplier's own label against the
+registry with a photo.
+
+\begin{keypoint}[In one sentence]
+SPIR replaces paper and e-mail traceability with one registry per shipment, reachable from a QR label on the part.
+\end{keypoint}
+
+Business objectives: fewer receiving errors (wrong heat, wrong quantity, wrong part), faster inspection, certificates
+available at the part, and an audit trail of every change.
+
+\subsection{Definitions}
+\input{glossary.tex}
+
+\subsection{References}
+\begin{itemize}
+  \item \emph{\SPIRSpec} --- the source requirements; IDs such as \req{FR-QR-001}.
+  \item SPIR-SDD-001 Software Design Description; SPIR-RTM-001 Requirements Traceability Matrix; SPIR-SCP-001 Scope,
+    Limitations, Risks and Roadmap; SPIR-TST-001 Test Plan and Report; SPIR-UG-001 User Guide.
+  \item ISO/IEC/IEEE 29148 (structure of this document, adapted).
+\end{itemize}
+
+\subsection{Requirement conventions}
+Requirement IDs are \code{SPIR-FR-<area>-<nn>} (functional) and \code{SPIR-NFR-<area>-<nn>} (non-functional).
+Priority uses MoSCoW: \textbf{Must}, \textbf{Should}, \textbf{Could}. The \emph{Release 0.5} column states whether the
+requirement is met in the current release. \emph{Source} names the spec v1.1 requirement or ``Stakeholder'' for
+decisions taken during the project.
+
+% =====================================================================================
+\section{Overall description}
+\subsection{Product perspective}
+SPIR is a new, self-contained web application. It consists of a single-page web app, a REST API running as a Neon
+Function, a Postgres database and a private object store. It does not yet exchange data with company ERP or supplier
+EDI systems; X12 832/841 intake is a planned channel.
+
+\Diagram[0.42]{context}{System context.}
+
+\subsection{Product functions}
+\begin{enumerate}
+  \item Two portals with their own sign-in: supplier and company.
+  \item Supplier profile: the supplier the supplier account belongs to.
+  \item Shipment data entry, one at a time (form) or many at once (CSV), with validation.
+  \item Versioned history: every change is a new version; nothing is overwritten.
+  \item Certificates (MTC, CoC, RT report and others) attached to shipments.
+  \item One QR code per shipment; printing on A4 sticker sheets with the company logo.
+  \item QR scanning by anyone with a phone, showing the live shipment data and certificates.
+  \item Company search across all suppliers' shipments.
+  \item Label check: photo of a supplier label, read by OCR and barcode decoding, matched and compared field by field.
+  \item Audit trail of business-significant actions.
+\end{enumerate}
+
+\subsection{User classes}
+{\small\zebra
+\begin{tabularx}{\linewidth}{@{}L{3.2cm}Y L{3.3cm}@{}}
+  \thead\hd{User class} & \hd{Needs} & \hd{Access in release 0.5}\\
+  Supplier user & Enter shipment data, upload certificates, print QR labels, correct data. Moderate IT skills; uses a desktop browser. & Supplier portal, account \code{admin}.\\
+  Company user & Receiving and quality staff: scan labels, look up shipments, check supplier labels, record discrepancies. Uses a desktop, tablet or phone. & Company portal, account \code{admin}.\\
+  Anyone with a phone & Sees a shipment's data and certificates by scanning its label. & Public scan page, no account.\\
+  Developer / IT & Runs, deploys and maintains SPIR. & Repository, Codespaces, Neon console.\\
+\end{tabularx}}
+
+\subsection{Operating environment}
+Current desktop and mobile browsers (Chrome, Edge, Safari, Firefox; last two major versions); camera access needs
+HTTPS. API on Neon Functions (Node 24), Postgres 17 and S3-compatible object storage in Neon (us-east-2). Development
+in GitHub Codespaces; hosting of the web app on GitHub Pages.
+
+\subsection{Design and implementation constraints}
+\begin{itemize}
+  \item Stack chosen by the stakeholder: GitHub Codespaces, GitHub Actions, GitHub Pages, Neon Functions, Neon
+    Postgres (JSONB for flexible attributes, no MongoDB), Neon Object Storage (private).
+  \item No secrets in the web app; the browser never connects to the database.
+  \item The repository is public: only synthetic data in committed files; real data in git-ignored folders.
+  \item OCR must run in the browser for the proof of concept (no paid OCR service).
+\end{itemize}
+
+\subsection{Assumptions and dependencies}
+\begin{itemize}
+  \item Suppliers will attach the SPIR QR label to parts before shipping.
+  \item The company receiving label and the supplier label carry the identification fields listed in section~\ref{sec:data}.
+  \item Neon and GitHub services are available; phone cameras can read standard QR codes.
+\end{itemize}
+
+% =====================================================================================
+\section{Use cases}
+\Diagram[0.55]{usecases}{Use cases in release \SPIRRelease. Dashed: designed or planned, not active.}
+
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{1.3cm}L{3.6cm}L{2.2cm}Y@{}}
+  \thead\hd{ID} & \hd{Use case} & \hd{Actor} & \hd{Main flow and outcome}\\\endhead
+  UC-01 & Sign in to a portal & Supplier, company & Enter username and password; the portal opens. Wrong details show ``Wrong username or password''.\\
+  UC-02 & Maintain supplier profile & Supplier & Enter name, country and contacts once; required before adding shipments.\\
+  UC-03 & Add a shipment & Supplier & Fill in the form; invalid fields are marked; on save the shipment and its QR code exist and are live.\\
+  UC-04 & Edit a shipment & Supplier & Change quantity, heats or other fields; a new version is live behind the same QR code.\\
+  UC-05 & Upload shipments from CSV & Supplier & Upload a file; all rows saved, or none with every problem listed by row.\\
+  UC-06 & Upload certificates & Supplier & Choose a type (MTC, CoC, RT report \ldots) and a PDF or image; attached to the live version.\\
+  UC-07 & Print QR labels & Supplier & Choose sheet layout and labels; print or download PNGs; every code is scan-checked.\\
+  UC-08 & Replace or revoke a label & Supplier & A damaged label is replaced (old code stops working) or revoked.\\
+  UC-09 & View shipment by QR scan & Anyone & Scan with a phone; the live data and certificate buttons appear; revoked labels say so.\\
+  UC-10 & Scan a QR code (portal) & Company & Camera, webcam or handheld scanner; the shipment opens inside the portal.\\
+  UC-11 & Search shipments & Company & Search by PO, part number, heat number or record ID across all suppliers.\\
+  UC-12 & Check a product label & Company & Photo, crop, OCR and barcodes; record resolved; field matrix and overall result; review, finalize, discrepancy.\\
+\end{xltabular}}
+
+% =====================================================================================
+\section{Functional requirements}
+
+\subsection{Portals and sign-in (PT)}
+\begin{reqs}
+  SPIR-FR-PT-01 & SPIR shall provide a supplier portal at \code{/\#/supplier} and a company portal at \code{/\#/company}, each with its own sign-in page. & \must & \Done & Stakeholder\\
+  SPIR-FR-PT-02 & In this phase each portal shall accept the username \code{admin} and password \code{admin}; any other combination shall be refused with the same message. & \must & \Done & Stakeholder\\
+  SPIR-FR-PT-03 & A successful sign-in shall create a signed session valid for 12 hours; tampered or expired sessions shall be refused. & \must & \Done & \req{NFR-SEC-001}\\
+  SPIR-FR-PT-04 & Each portal shall only reach its own functions: suppliers cannot run label checks or search other suppliers; the company cannot import or print labels. & \must & \Done & \req{FR-SUP-004}\\
+  SPIR-FR-PT-05 & Sessions of the two portals shall be independent in one browser. & \must & \Done & Defect found in testing\\
+  SPIR-FR-PT-06 & Individual user accounts with roles (RBAC), password policy and company single sign-on. & \must & \NotStarted & \req{FR-SUP-003}\\
+\end{reqs}
+
+\subsection{Supplier profile (SP)}
+\begin{reqs}
+  SPIR-FR-SP-01 & The supplier account shall belong to exactly one supplier, defined in its profile (name required; country, contact person, e-mail, phone, address optional). & \must & \Done & Stakeholder\\
+  SPIR-FR-SP-02 & The supplier portal shall ask for the profile before shipments, CSV upload or QR labels can be used. & \must & \Done & Stakeholder\\
+  SPIR-FR-SP-03 & Every shipment created by the supplier account shall carry the profile supplier; supplier columns in a CSV shall be ignored. & \must & \Done & Stakeholder\\
+  SPIR-FR-SP-04 & Profile changes shall apply to existing shipments and be audited. & \should & \Done & \req{FR-SUP-008}\\
+\end{reqs}
+
+\subsection{Shipments (SH)}
+\begin{reqs}
+  SPIR-FR-SH-01 & A supplier shall be able to add one shipment with a form containing the identification fields of section~\ref{sec:data}. & \must & \Done & Stakeholder\\
+  SPIR-FR-SH-02 & The form shall validate each field and show the problem next to it (missing, not a whole number, wrong country code). & \must & \Done & \req{NFR-UX-001}\\
+  SPIR-FR-SH-03 & A supplier shall be able to upload many shipments as one CSV file, one row per shipment, with a downloadable template. & \must & \Done & Stakeholder\\
+  SPIR-FR-SH-04 & A CSV with any invalid row shall be rejected completely, listing every problem with its row number. & \must & \Done & Stakeholder\\
+  SPIR-FR-SH-05 & A shipment shall be identified by supplier, part number, PO number and PO line. Saving data for an existing shipment shall update it, not duplicate it. & \must & \Done & Stakeholder\\
+  SPIR-FR-SH-06 & In an edit, part number, PO number and PO line shall be read-only. & \must & \Done & Stakeholder\\
+  SPIR-FR-SH-07 & Saved data shall be live immediately (no approval step in this phase). & \must & \Done & Stakeholder\\
+  SPIR-FR-SH-08 & Draft, submit, review, approve and reject with reasons, before data goes live. & \should & \Deferred & \req{FR-WF-001}--\req{FR-WF-009}\\
+\end{reqs}
+
+\subsection{Versions and history (VR)}
+\begin{reqs}
+  SPIR-FR-VR-01 & Every change shall create a new version; the previous version shall be kept read-only as SUPERSEDED. & \must & \Done & \req{FR-TRC-007}\\
+  SPIR-FR-VR-02 & Saving identical data shall not create a version. & \must & \Done & Stakeholder\\
+  SPIR-FR-VR-03 & Approved versions shall be immutable at database level. & \must & \Done & \req{NFR-DATA-001}\\
+  SPIR-FR-VR-04 & The supplier and company shall see the version history of a shipment; QR scans show only the live version. & \must & \Done & \req{FR-WF-008}\\
+\end{reqs}
+
+\subsection{Certificates (DC)}
+\begin{reqs}
+  SPIR-FR-DC-01 & A supplier shall upload certificates of type MTC, CoC, RT report, inspection report, drawing or other, as PDF, PNG or JPEG up to 15 MB. & \must & \Done & \req{FR-DOC-001}\\
+  SPIR-FR-DC-02 & Files shall be checked for size, extension and real content type, stored privately with a SHA-256 hash, and downloadable only through links valid for 5 minutes. & \must & \Done & \req{FR-DOC-005}, \req{FR-DOC-006}\\
+  SPIR-FR-DC-03 & Uploading a file shall never replace an earlier one. & \must & \Done & \req{FR-DOC-004}\\
+  SPIR-FR-DC-04 & Malware scanning before a file is published. & \should & \NotStarted & \req{FR-DOC-007}\\
+\end{reqs}
+
+\subsection{QR codes and labels (QR)}
+\begin{reqs}
+  SPIR-FR-QR-01 & Each shipment shall have exactly one active QR code, issued when it is first saved. & \must & \Done & \req{FR-QR-001}\\
+  SPIR-FR-QR-02 & The QR code shall contain only a link with a random 16-character token; the token shall be stored hashed for lookup and encrypted for reprinting. & \must & \Done & \req{FR-QR-002}\\
+  SPIR-FR-QR-03 & Printed labels shall keep working after any data change. & \must & \Done & Stakeholder\\
+  SPIR-FR-QR-04 & Labels shall be readable by ordinary phone cameras: at least a 4-module white border, size-optimised error correction, vector output. & \must & \Done & Stakeholder\\
+  SPIR-FR-QR-05 & The company logo shall sit in the centre of the code; every code shall be decoded again after drawing, and the logo shrunk or removed if decoding fails. & \must & \Done & Stakeholder\\
+  SPIR-FR-QR-06 & Labels shall show Part \#, PO \# (with line) and Heat \# beside the code and print on A4 sticker sheets of 8, 14 or 21, with start position and printer alignment. & \must & \Done & Stakeholder\\
+  SPIR-FR-QR-07 & A supplier shall replace (rotate) or revoke a label; the old code then answers ``revoked''. The shipment keeps its ID. & \must & \Done & \req{FR-QR-005}\\
+\end{reqs}
+
+\subsection{Public scan (PS)}
+\begin{reqs}
+  SPIR-FR-PS-01 & Scanning a label shall open a public page with the live shipment data, without sign-in. & \must & \Deviation & Stakeholder; \req{FR-QR-003}\\
+  SPIR-FR-PS-02 & The page shall offer each certificate as a large button; a token shall only open documents of its own shipment. & \must & \Done & Stakeholder\\
+  SPIR-FR-PS-03 & Unknown codes shall answer ``not recognised'' and revoked codes ``revoked, ask the supplier''; no data shall be shown. & \must & \Done & \req{FR-QR-007}\\
+  SPIR-FR-PS-04 & QR look-ups shall be rate limited per caller and audited. & \must & \Done & \req{FR-QR-008}\\
+\end{reqs}
+
+\subsection{Company functions (CS)}
+\begin{reqs}
+  SPIR-FR-CS-01 & The company portal shall scan QR codes by camera, webcam, photo or keyboard-wedge scanner. & \must & \Done & \req{FR-DEV-001}, \req{FR-DEV-002}\\
+  SPIR-FR-CS-02 & The company shall search every supplier's shipments by PO, part number, heat number or record ID. & \must & \Done & Stakeholder\\
+  SPIR-FR-CS-03 & The company shall see full shipment details, versions and certificates. & \must & \Done & \req{FR-TRC-007}\\
+\end{reqs}
+
+\subsection{Label check (LC)}
+\begin{reqs}
+  SPIR-FR-LC-01 & The company shall check a supplier label from a photo or camera capture, with a crop tool and automatic upscaling. & \must & \Done & \req{FR-OCR-001}, \req{FR-OCR-002}\\
+  SPIR-FR-LC-02 & OCR and barcode decoding shall run in the browser; the server shall receive text, word confidences and barcodes. & \must & \Done & \req{FR-OCR-003}, \req{FR-OCR-007}\\
+  SPIR-FR-LC-03 & Fields shall be extracted using a versioned label profile (aliases, patterns, fallbacks, thresholds). & \must & \Done & \req{FR-OCR-004}\\
+  SPIR-FR-LC-04 & The shipment shall be resolved from identifier combinations (part + PO or heat; PO + heat or line); ambiguous cases go to the user. & \must & \Done & \req{FR-OCR-008}\\
+  SPIR-FR-LC-05 & Each field shall get one result: MATCH, MISMATCH, LOW\_CONFIDENCE, UNREADABLE, MISSING\_ON\_LABEL, MISSING\_IN\_REGISTRY, NOT\_APPLICABLE, NOT\_CHECKED, REVIEW\_REQUIRED; the run one overall status: PASS, FAIL, PASS\_WITH\_WARNINGS, NEEDS\_REVIEW, UNRESOLVED. & \must & \Done & \req{FR-OCR-014}\\
+  SPIR-FR-LC-06 & A confidence threshold shall never turn unequal values into a match; likely OCR confusions (8/B, 0/O, 1/I) go to review, never to a match. & \must & \Done & \req{FR-OCR-017}\\
+  SPIR-FR-LC-07 & The operator shall confirm or correct fields without losing the raw OCR; corrections are attributed and audited. & \must & \Done & \req{FR-OCR-012}\\
+  SPIR-FR-LC-08 & Label checks and discrepancies shall never change registry data. & \must & \Done & \req{FR-OCR-013}\\
+  SPIR-FR-LC-09 & Each run shall pin the record version, label profile version and rule versions. & \must & \Done & \req{FR-OCR-016}\\
+\end{reqs}
+
+\subsection{Audit (AU)}
+\begin{reqs}
+  SPIR-FR-AU-01 & Sign-in, profile changes, imports, saves, QR issue/rotate/revoke/resolve, document upload/download and label checks shall be recorded with actor, time, object and correlation ID. & \must & \Done & \req{FR-ADM-003}\\
+  SPIR-FR-AU-02 & The audit trail shall be append-only at database level. & \must & \Done & \req{NFR-DATA-001}\\
+  SPIR-FR-AU-03 & An audit screen in the company portal. & \should & \NotStarted & \req{FR-ADM-004}\\
+\end{reqs}
+
+% =====================================================================================
+\section{Data requirements}\label{sec:data}
+\subsection{Identification fields}
+Defined from photos of real company receiving labels and supplier labels.
+
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{3.4cm}L{1.8cm}L{3.2cm}Y@{}}
+  \thead\hd{Field (CSV column)} & \hd{Mandatory} & \hd{Format} & \hd{Notes and example}\\\endhead
+  Part number \fpath{part_number} & Yes & Text, up to 80 & Company item number. \code{24B3170X012}\\
+  Part description \fpath{part_description} & Yes & Text, up to 200 & As on the PO. \code{BODY,GLOBE \textasciitilde{} 2,CL300,RF,WCB}\\
+  PO number \fpath{purchase_order_number} & Yes & Text (10 digits in demo) & \code{7700104512}\\
+  PO line \fpath{po_line_number} & Yes & Whole number & ``LINE 4'' on the label is 4.\\
+  Quantity \fpath{quantity} & Yes & Whole number & Pieces on the PO line. A label ``02/02'' means piece 2 of 2.\\
+  Heat numbers \fpath{heat_numbers} & Yes & One or more & Separated by \code{|} in CSV, commas in the form. \code{HT-77812}\\
+  Pattern number \fpath{pattern_number} & Yes & Text & Casting pattern. \code{PT-2417-A}\\
+  Supplier & Yes & From profile & Not entered per shipment.\\
+  Design revision \fpath{design_revision} & No & Text, up to 20 & ``Rev:E'' is E.\\
+  Material \fpath{material} & No & Text & \code{ASTM A216 WCB}\\
+  RT number \fpath{radiographic_test_number} & No & Text & \code{RT-2026-0311}\\
+  Country of origin \fpath{country_of_origin} & No & 2-letter code & \code{IN}\\
+  Supplier part number \fpath{supplier_part_number} & No & Text & If different from the part number.\\
+\end{xltabular}}
+
+\subsection{Business rules}
+{\small\zebra
+\begin{xltabular}{\linewidth}{@{}L{1.4cm}Y@{}}
+  \thead\hd{ID} & \hd{Rule}\\\endhead
+  BR-01 & A shipment is identified by supplier + part number + PO number + PO line (the record key \code{PO-L<line>}).\\
+  BR-02 & A product is identified by supplier + company part number.\\
+  BR-03 & One active QR token per shipment; replacing it revokes the old one.\\
+  BR-04 & A version is never edited; a change creates a new one (database trigger rejects edits of approved versions).\\
+  BR-05 & Label checks never change registry data.\\
+  BR-06 & A CSV import is all-or-nothing.\\
+  BR-07 & Heat and batch are many-to-many; a version may list several heats.\\
+  BR-08 & New CSV columns become new attribute definitions automatically; retired columns are rejected.\\
+\end{xltabular}}
+
+% =====================================================================================
+\section{External interface requirements}
+\paragraph{User interface} Responsive web pages using the approved cozy-glass design (brand blue \code{\#004B8D}, cyan
+\code{\#00A4D2}, status colours), usable from 360\,px wide; touch targets of at least 44\,px on the scan page.
+\paragraph{Software interface} REST JSON API under \code{/api/v1}, documented in \fpath{api/openapi.yaml}; bearer-token
+authentication; public endpoints \code{/qr/\{token\}} and \code{/qr/\{token\}/documents/\{code\}}.
+\paragraph{Hardware} Phone and tablet cameras, webcams, HID keyboard-wedge barcode scanners (USB or Bluetooth), office
+printers for A4 sticker sheets.
+\paragraph{Communication} HTTPS only; database over TLS (\code{sslmode=verify-full}); object storage over the S3 API.
+
+% =====================================================================================
+\section{Non-functional requirements}
+\begin{reqs}
+  SPIR-NFR-SEC-01 & No secrets in the web app; credentials only in environment variables. & \must & \Done & \req{NFR-SEC-001}\\
+  SPIR-NFR-SEC-02 & Supplier data isolated by supplier at the API. & \must & \Done & \req{FR-SUP-004}\\
+  SPIR-NFR-SEC-03 & Production sign-in with individual accounts, strong passwords or SSO, before real data is used publicly. & \must & \NotStarted & \req{NFR-SEC-001}\\
+  SPIR-NFR-SEC-04 & Dependency, static and dynamic security testing before production. & \must & \NotStarted & \req{NFR-SEC-002}\\
+  SPIR-NFR-USE-01 & Errors explain what to fix in plain language (form, CSV, sign-in, scan). & \must & \Done & \req{NFR-UX-001}\\
+  SPIR-NFR-USE-02 & The public scan page works on phones with large touch targets. & \must & \Done & \req{NFR-UX-001}\\
+  SPIR-NFR-ACC-01 & Text contrast at least 4.5:1, visible keyboard focus, real buttons and labels. & \must & \Done & \req{NFR-ACC-001}\\
+  SPIR-NFR-QRL-01 & Printed QR codes decode on a typical phone at receiving distance; every code verified before printing. & \must & \Done & Stakeholder\\
+  SPIR-NFR-PER-01 & QR scan response targets (p95) to be agreed. & \should & \OpenItem & \req{NFR-PERF-001}\\
+  SPIR-NFR-AVL-01 & Availability, recovery point and recovery time targets to be agreed. & \should & \OpenItem & \req{NFR-AV-001}, \req{NFR-DR-001}\\
+  SPIR-NFR-RET-01 & Retention periods for records, documents, images and audit to be agreed. & \should & \OpenItem & \req{NFR-RET-001}\\
+  SPIR-NFR-MNT-01 & Modular code, automated tests run on every change, numbered migrations, documented API. & \must & \Done & \req{NFR-MNT-001}\\
+  SPIR-NFR-POR-01 & Database, storage, auth, OCR and devices behind replaceable adapters. & \must & \Done & \req{NFR-PORT-001}, \req{NFR-OCR-006}\\
+  SPIR-NFR-OBS-01 & Correlation ID on every request and audit event; metrics and alerts. & \should & \Partial & \req{NFR-OBS-001}\\
+\end{reqs}
+
+\section{Out of scope for release \SPIRRelease}
+X12 EDI intake and acknowledgements; individual supplier user administration and RBAC; approval workflow (deferred);
+supplier activation screens; offline capture; device management; malware scanning; automatic perspective correction;
+production hosting and monitoring. See SPIR-SCP-001 for the roadmap.
+\end{document}

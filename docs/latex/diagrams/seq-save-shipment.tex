@@ -1,0 +1,22 @@
+% UML sequence: a supplier saves a shipment with the form (the CSV upload follows the same path).
+\begin{tikzpicture}[x=1cm,y=-0.62cm]
+  \foreach \x/\n/\t in {0/u/Supplier user,3.2/w/Web app,6.4/p/API: portal,9.6/e/Import engine,12.8/d/Postgres}{
+    \node[lifehead] (\n) at (\x,0) {\t};
+    \draw[lifeline] (\x,0.6) -- (\x,17.6);}
+  \draw[activation] (6.27,2.6) rectangle (6.53,16.2);
+  \draw[activation] (9.47,5.6) rectangle (9.73,14.2);
+  \draw[msg] (0,1.6) -- node[msglbl]{fills in the form, clicks Save} (3.2,1.6);
+  \draw[msg] (3.2,2.6) -- node[msglbl]{POST /supplier/shipments (Bearer)} (6.4,2.6);
+  \node[note=34mm,anchor=west] at (13.5,3.4) {authenticate session; role SUPPLIER; profile set (else 403); validate fields (zod) --- 422 with field messages};
+  \draw[msg] (6.4,5.6) -- node[msglbl]{one CSV row, forced supplier} (9.6,5.6);
+  \draw[msg] (9.6,6.6) -- node[msglbl]{BEGIN; find product by part no.} (12.8,6.6);
+  \draw[msg] (9.6,7.8) -- node[msglbl]{find record by PO + line key} (12.8,7.8);
+  \node[note=34mm,anchor=west] at (13.5,9.4) {new: create record + v1\\changed: new version, previous\\SUPERSEDED\\same: nothing};
+  \draw[msg] (9.6,9.4) -- node[msglbl]{insert version (APPROVED)} (12.8,9.4);
+  \draw[msg] (9.6,10.6) -- node[msglbl]{issue QR token if none} (12.8,10.6);
+  \draw[msg] (9.6,11.8) -- node[msglbl]{audit IMPORT\_CREATE / UPDATE} (12.8,11.8);
+  \draw[msg] (9.6,13.0) -- node[msglbl]{COMMIT} (12.8,13.0);
+  \draw[reply] (9.6,14.2) -- node[msglbl]{report: created / updated / unchanged} (6.4,14.2);
+  \draw[reply] (6.4,16.2) -- node[msglbl]{201 \{code, created, changed\}} (3.2,16.2);
+  \draw[reply] (3.2,17.2) -- node[msglbl]{shipment page: label + uploads} (0,17.2);
+\end{tikzpicture}

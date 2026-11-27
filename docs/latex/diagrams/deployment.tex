@@ -1,0 +1,38 @@
+% UML deployment view: where each part runs.
+\begin{tikzpicture}[node distance=8mm and 10mm]
+  % user devices
+  \node[box,text width=34mm] (pc) {Desktop / tablet browser\\[-1pt]\scriptsize supplier + company portals};
+  \node[box,text width=34mm,below=8mm of pc] (phone) {Phone camera / browser\\[-1pt]\scriptsize public scan page};
+  \node[box,text width=34mm,below=8mm of phone] (scanner) {USB / Bluetooth scanner\\[-1pt]\scriptsize keyboard wedge};
+  \begin{scope}[on background layer]
+    \node[group,fit=(pc)(phone)(scanner),inner ysep=12pt] (dev) {};
+  \end{scope}
+  \node[grouplabel] at (dev.north west) {Client devices};
+
+  % GitHub
+  \node[softbox,right=22mm of pc,text width=36mm] (pages) {GitHub Pages\\[-1pt]\scriptsize React 19 SPA (static files)\\[-1pt]Tesseract.js, ZXing run here};
+  \node[softbox,below=8mm of pages,text width=36mm] (actions) {GitHub Actions\\[-1pt]\scriptsize ci.yml, deploy-web.yml,\\[-1pt]deploy-api.yml, docs.yml};
+  \node[softbox,below=8mm of actions,text width=36mm] (cs) {GitHub Codespaces\\[-1pt]\scriptsize development (ports 5173, 8787)};
+  \begin{scope}[on background layer]
+    \node[group,fit=(pages)(actions)(cs),inner ysep=12pt] (ghg) {};
+  \end{scope}
+  \node[grouplabel] at (ghg.north west) {GitHub};
+
+  % Neon
+  \node[darkbox,right=22mm of pages,text width=40mm] (fn) {Neon Function \code{spirapi}\\[-1pt]\mdseries\scriptsize Node 24, Hono modular monolith};
+  \node[store,below=9mm of fn] (pg) {Postgres\\[-1pt]\scriptsize schema \code{spir}};
+  \node[store,below=7mm of pg] (s3) {Object Storage\\[-1pt]\scriptsize private bucket};
+  \begin{scope}[on background layer]
+    \node[group,fit=(fn)(pg)(s3),inner ysep=12pt] (neon) {};
+  \end{scope}
+  \node[grouplabel] at (neon.north west) {Neon (us-east-2)};
+
+  \draw[flow] (pc) -- node[lbl]{HTTPS} (pages);
+  \draw[flow] (phone.east) -- ++(9mm,0) |- (pages.west);
+  \draw[flow] (pages) -- node[lbl,above=1pt]{HTTPS + token} (fn);
+  \draw[flow] (fn) -- (pg);
+  \draw[flow] (fn.east) -- ++(5mm,0) |- (s3.east);
+  \draw[dflow] (actions.east) -- ++(6mm,0) |- node[lbl,pos=0.75]{neon deploy} (fn.south west);
+  \draw[dflow] (actions) -- node[lbl,right]{publish} (pages);
+  \draw[flow] (scanner.west) -- ++(-4mm,0) |- node[lbl,pos=0.25,rotate=90]{types the code} (pc.west);
+\end{tikzpicture}

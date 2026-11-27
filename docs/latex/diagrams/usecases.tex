@@ -1,0 +1,35 @@
+% UML use case diagram for release 0.5. Dashed use cases are designed but switched off / not built.
+\begin{tikzpicture}
+  % system boundary
+  \draw[spirblue,line width=0.9pt,rounded corners=6pt,fill=spirmist] (2.2,-6.6) rectangle (12.8,4.4);
+  \node[font=\sffamily\small\bfseries,text=spirblue,anchor=north west] at (2.35,4.3) {SPIR release 0.5};
+  % supplier use cases
+  \node[usecase] (u1) at (5.0,3.2) {Sign in\\(supplier portal)};
+  \node[usecase] (u2) at (5.0,2.0) {Maintain supplier\\profile};
+  \node[usecase] (u3) at (5.0,0.8) {Add or edit\\a shipment};
+  \node[usecase] (u4) at (5.0,-0.4) {Upload shipments\\from CSV};
+  \node[usecase] (u5) at (5.0,-1.6) {Upload certificates};
+  \node[usecase] (u6) at (5.0,-2.8) {Print, replace or\\revoke QR labels};
+  % shared / public
+  \node[usecase] (u7) at (9.9,-4.2) {View shipment\\by QR scan};
+  \node[usecase] (u7b) at (9.9,-5.6) {Download\\certificate};
+  % company use cases
+  \node[usecase] (c1) at (10.0,3.2) {Sign in\\(company portal)};
+  \node[usecase] (c2) at (10.0,2.0) {Scan a QR code};
+  \node[usecase] (c3) at (10.0,0.8) {Search shipments};
+  \node[usecase] (c4) at (10.0,-0.4) {Check a product\\label (OCR)};
+  \node[usecase] (c5) at (10.0,-2.0) {Review fields,\\record discrepancy};
+  \node[usecaseoff] (x1) at (6.9,-4.9) {Approve / reject\\(archived design)};
+  \node[usecaseoff] (x2) at (6.9,-6.0) {Receive X12 EDI\\(planned)};
+  % actors
+  \pic at (0.8,0.6) {actor}; \node[font=\sffamily\scriptsize\bfseries] (sa) at (0.8,-0.2) {Supplier user};
+  \pic at (14.3,1.4) {actor}; \node[font=\sffamily\scriptsize\bfseries] (ca) at (14.3,0.6) {Company user};
+  \pic at (14.3,-4.6) {actor}; \node[font=\sffamily\scriptsize\bfseries,align=center] (pa) at (14.3,-5.45) {Anyone with\\a phone};
+  \foreach \u in {u1,u2,u3,u4,u5,u6} \draw[spirink2,line width=0.6pt] (1.15,0.5) -- (\u.west);
+  \foreach \u in {c1,c2,c3,c4,c5} \draw[spirink2,line width=0.6pt] (13.95,1.3) -- (\u.east);
+  \draw[spirink2,line width=0.6pt] (13.95,-4.7) -- (u7.east);
+  \draw[spirink2,line width=0.6pt] (13.95,-4.7) -- (u7b.east);
+  \draw[dflow] (u7) -- node[lbl,left]{\guillemotleft extend\guillemotright} (u7b);
+  \draw[dflow] (c5) -- node[lbl,left=2pt]{\guillemotleft extend\guillemotright} (c4);
+  \draw[spirink2,line width=0.6pt] (13.95,1.3) -- (u7.north east);
+\end{tikzpicture}

@@ -1,0 +1,30 @@
+% Workflow (UML activity): supplier enters shipment data and produces QR labels.
+\begin{tikzpicture}[node distance=7mm and 10mm]
+  \node[initial] (s) {};
+  \node[activity,below=5mm of s] (a1) {Sign in to the supplier portal (\code{/\#/supplier})};
+  \node[decision,below=of a1] (q1) {Profile\\set?};
+  \node[activity,right=14mm of q1] (a2) {Enter supplier name and contacts (Profile)};
+  \node[decision,below=of q1] (q2) {How many\\shipments?};
+  \node[activity,below left=8mm and 2mm of q2] (a3) {Fill in the shipment form};
+  \node[activity,below right=8mm and 2mm of q2] (a4) {Upload a CSV file (one row per shipment)};
+  \node[decision,below=26mm of q2] (q3) {Valid?};
+  \node[activity,right=14mm of q3] (a5) {Fix the marked fields or the listed rows};
+  \node[activity,below=of q3,text width=46mm] (a6) {SPIR saves it live: new record + QR code, or a new version behind the same QR};
+  \node[activity,below=of a6] (a7) {Upload certificates (MTC, CoC, RT report)};
+  \node[activity,below=of a7] (a8) {Print QR labels (A4 sheet / PNG) and attach to parts};
+  \node[final,below=5mm of a8] (e) {};
+  \draw[flow] (s) -- (a1); \draw[flow] (a1) -- (q1);
+  \draw[flow] (q1) -- node[lbl]{no} (a2);
+  \coordinate (m) at ($(q1.south)!0.5!(q2.north)$);
+  \draw[flow] (a2) |- (m);
+  \draw[flow] (q1) -- node[lbl,left,pos=0.3]{yes} (q2);
+  \draw[flow] (q2) -| node[lbl,pos=0.25]{one} (a3);
+  \draw[flow] (q2) -| node[lbl,pos=0.25]{many} (a4);
+  \coordinate (n) at ($(q3.north)+(0,5mm)$);
+  \draw[flow] (a3) |- (n) -- (q3);
+  \draw[flow] (a4) |- (n);
+  \draw[flow] (q3) -- node[lbl]{no} (a5);
+  \draw[flow] (a5.east) -- ++(6mm,0) |- node[lbl,pos=0.25,rotate=90]{try again} ([xshift=1pt]m);
+  \draw[flow] (q3) -- node[lbl,right]{yes} (a6);
+  \draw[flow] (a6) -- (a7); \draw[flow] (a7) -- (a8); \draw[flow] (a8) -- (e);
+\end{tikzpicture}
