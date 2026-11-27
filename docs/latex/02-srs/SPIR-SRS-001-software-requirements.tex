@@ -1,9 +1,10 @@
 \makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
 \documentclass[11pt,a4paper]{article}
 \usepackage{spirdoc}
-\SetDoc{SPIR-SRS-001}{Software Requirements Specification}{1.0}{Issued for review}
+\SetDoc{SPIR-SRS-001}{Software Requirements Specification}{1.1}{Issued for review}
 \Revisions{%
   1.0 & 27 Nov 2026 & \SPIRAuthor & First issue. Specifies release \SPIRRelease\ as built and agreed in the stakeholder sessions, traced to spec v1.1.\\
+  1.1 & 27 Nov 2026 & \SPIRAuthor & Clarified FR-SH-07 (APPROVED means live) and FR-SP-04 (supplier rename) after review.\\
 }
 % Requirement table: \begin{reqs} ID & statement & priority & status & source \\ \end{reqs}
 \newenvironment{reqs}{\par\small\zebra\xltabular{\linewidth}{@{}L{2.35cm}Y L{1.25cm}L{2.0cm}L{1.85cm}@{}}
@@ -147,7 +148,7 @@ in GitHub Codespaces; hosting of the web app on GitHub Pages.
   SPIR-FR-SP-01 & The supplier account shall belong to exactly one supplier, defined in its profile (name required; country, contact person, e-mail, phone, address optional). & \must & \Done & Stakeholder\\
   SPIR-FR-SP-02 & The supplier portal shall ask for the profile before shipments, CSV upload or QR labels can be used. & \must & \Done & Stakeholder\\
   SPIR-FR-SP-03 & Every shipment created by the supplier account shall carry the profile supplier; supplier columns in a CSV shall be ignored. & \must & \Done & Stakeholder\\
-  SPIR-FR-SP-04 & Profile changes shall apply to existing shipments and be audited. & \should & \Done & \req{FR-SUP-008}\\
+  SPIR-FR-SP-04 & Profile changes shall apply to existing shipments and be audited. Shipments store the supplier's internal ID, not its name, and the name is read from the profile when shown; so a rename creates no shipment versions and does not change shipment identity. & \should & \Done & \req{FR-SUP-008}\\
 \end{reqs}
 
 \subsection{Shipments (SH)}
@@ -158,7 +159,7 @@ in GitHub Codespaces; hosting of the web app on GitHub Pages.
   SPIR-FR-SH-04 & A CSV with any invalid row shall be rejected completely, listing every problem with its row number. & \must & \Done & Stakeholder\\
   SPIR-FR-SH-05 & A shipment shall be identified by supplier, part number, PO number and PO line. Saving data for an existing shipment shall update it, not duplicate it. & \must & \Done & Stakeholder\\
   SPIR-FR-SH-06 & In an edit, part number, PO number and PO line shall be read-only. & \must & \Done & Stakeholder\\
-  SPIR-FR-SH-07 & Saved data shall be live immediately (no approval step in this phase). & \must & \Done & Stakeholder\\
+  SPIR-FR-SH-07 & Saved data shall be live immediately (no approval step in this phase). Technically each save is stored as an \code{APPROVED} version and the previous one becomes \code{SUPERSEDED}. & \must & \Done & Stakeholder\\
   SPIR-FR-SH-08 & Draft, submit, review, approve and reject with reasons, before data goes live. & \should & \Deferred & \req{FR-WF-001}--\req{FR-WF-009}\\
 \end{reqs}
 

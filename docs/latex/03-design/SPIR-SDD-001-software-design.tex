@@ -1,10 +1,11 @@
 \makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
 \documentclass[11pt,a4paper]{article}
 \usepackage{spirdoc}
-\SetDoc{SPIR-SDD-001}{Software Design Description}{1.1}{Issued for review}
+\SetDoc{SPIR-SDD-001}{Software Design Description}{1.2}{Issued for review}
 \Revisions{%
   1.0 & 27 Nov 2026 & \SPIRAuthor & First issue, describing the design of release \SPIRRelease.\\
   1.1 & 27 Nov 2026 & \SPIRAuthor & ADR-11 to ADR-14 added (decisions of 27 Nov 2026, not yet built).\\
+  1.2 & 27 Nov 2026 & \SPIRAuthor & Clarified that APPROVED means live while there is no approval step (review feedback).\\
 }
 \newcommand{\ep}[4]{\code{#1} & \code{#2} & #3 & #4\\}
 
@@ -95,7 +96,10 @@ All objects live in Postgres schema \code{spir}; every query is schema-qualified
 
 \subsection{Invariants enforced by the database}
 \begin{itemize}
-  \item Approved versions cannot be updated (trigger raises \emph{immutable}).
+  \item Approved versions cannot be updated (trigger raises \emph{immutable}). In release \SPIRRelease\ there is no
+    approval step: every save is written straight in as \code{APPROVED}, so \code{APPROVED} means \emph{live}. An edit
+    adds a new \code{APPROVED} version and marks the previous one \code{SUPERSEDED} in the same transaction; QR scans
+    show the new version at once.
   \item Audit events cannot be updated or deleted (trigger raises \emph{append-only}).
   \item At most one APPROVED and one open version per record, and one ACTIVE QR token per record (partial unique indexes).
   \item Every record references exactly one product; every product one supplier (foreign keys).

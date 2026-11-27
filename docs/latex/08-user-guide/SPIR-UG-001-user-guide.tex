@@ -2,9 +2,10 @@
 \documentclass[11pt,a4paper]{article}
 \usepackage{spirdoc}
 \graphicspath{{img/}}
-\SetDoc{SPIR-UG-001}{User Guide}{1.0}{Issued for review}
+\SetDoc{SPIR-UG-001}{User Guide}{1.1}{Issued for review}
 \Revisions{%
   1.0 & 27 Nov 2026 & \SPIRAuthor & First issue for release \SPIRRelease: supplier portal, company portal, phone scanning.\\
+  1.1 & 27 Nov 2026 & \SPIRAuthor & Sign-in behaviour across the two portals worded to match the release notes.\\
 }
 \newcommand{\shot}[3][0.92]{\begin{figure}[H]\centering\fcolorbox{spirrule}{white}{\includegraphics[width=#1\linewidth]{#2}}\caption{#3}\end{figure}}
 \newcommand{\step}[1]{\item #1}
@@ -33,7 +34,7 @@ enter real data on a public address until then.
 
 \shot[0.7]{sign-in}{Sign-in page (supplier portal). The company portal looks the same.}
 If you see ``Wrong username or password'', check both fields and try again. Your session lasts 12 hours; sign out with
-\ui{Sign out} at the top right. You can be signed in to both portals in the same browser at once.
+\ui{Sign out} at the top right. You can be signed in to both portals in the same browser at once; each keeps its own sign-in, so signing out of one leaves the other signed in.
 
 % =====================================================================================
 \section{Supplier portal}

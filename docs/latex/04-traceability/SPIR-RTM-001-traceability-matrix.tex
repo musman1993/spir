@@ -1,10 +1,11 @@
 \makeatletter\def\input@path{{../shared/}{../diagrams/}}\makeatother
 \documentclass[10pt,a4paper]{article}
 \usepackage{spirdoc}
-\SetDoc{SPIR-RTM-001}{Requirements Traceability Matrix}{1.1}{Issued for review}
+\SetDoc{SPIR-RTM-001}{Requirements Traceability Matrix}{1.2}{Issued for review}
 \Revisions{%
   1.0 & 27 Nov 2026 & \SPIRAuthor & First issue: all 127 requirements of spec v1.1 assessed against release \SPIRRelease.\\
   1.1 & 27 Nov 2026 & \SPIRAuthor & Notes on FR-QR-003, FR-DOC-005 and the workflow requirements updated with the decisions of 27 Nov 2026.\\
+  1.2 & 27 Nov 2026 & \SPIRAuthor & FR-OCR-006 corrected to Partial (bounding box not yet sent by the web app), found in review.\\
 }
 
 % ---- Reading rtm.csv -----------------------------------------------------------
@@ -84,7 +85,7 @@ Of the \textbf{\rtm{all}{all} requirements} in the specification, release \SPIRR
   \Done & \rtm{all}{I} & \pct{\rtm{all}{I}} & Keep; harden for production (security testing, monitoring).\\
   \Partial & \rtm{all}{P} & \pct{\rtm{all}{P}} & Finish the missing part listed per requirement.\\
   \Deferred & \rtm{all}{D} & \pct{\rtm{all}{D}} & Bring back the approval workflow with role-based access (archive branch).\\
-  \Deviation & \rtm{all}{V} & \pct{\rtm{all}{V}} & Confirm or reverse the decision on open QR scans before production.\\
+  \Deviation & \rtm{all}{V} & \pct{\rtm{all}{V}} & Decided 27 Nov 2026: sign-in for every scan (Phase 1).\\
   \NotStarted & \rtm{all}{N} & \pct{\rtm{all}{N}} & Mostly X12 EDI, supplier user administration and device management.\\
   \OpenItem & \rtm{all}{O} & \pct{\rtm{all}{O}} & Agree availability, performance, recovery and retention targets.\\
 \end{tabularx}}
